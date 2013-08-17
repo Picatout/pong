@@ -1,0 +1,2659 @@
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ; NOM: mini-pong
+                      00002 ; DESCRIPTION: Jeux mini-pong 16x21 pixels sur pic10f322
+                      00003 ;              sortie vidéo NTSC
+                      00004 ;              sortie audio
+                      00005 ;              pointage indiqué en haut de l'écran
+                      00006 ;              chaque joueur contrôle sa raquette à l'aide
+                      00007 ;              de 2 boutons
+                      00008 ;              au démarrage la joeur de gauche a le service
+                      00009 ;              et doit déplacer sa raquette pour démarrer la partie
+                      00010 ;
+                      00011 ;              Le TIMER2 génère le signal de synchronisation NTSC
+                      00012 ;              et une interruption est générer à la fin de chaque
+                      00013 ;              cycle. Toute la logique du programme s'exécute
+                      00014 ;              à l'intérieur de cette interruption.
+                      00015 ;              la variable 'ln_cnt' compte les lignes de scan vidéo NTSC
+                      00016 ;              mais est utilisée aussi par le céduleur de tâches.
+                      00017 ;              le NCO génère le son produit lorsque la balle rebondi sur
+                      00018 ;              une raquette ou un bord ainsi que le son plus grave et prolongé
+                      00019 ;              lorsqu'un joueur manque la balle.
+                      00020 ;
+                      00021 ; AUTEUR: Jacquees Deschênes
+                      00022 ; DATE: 2013-08-10
+                      00023 
+                      00024     include <p10f322.inc>
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ;  MPASM PIC10F322 processor include
+                      00005 ; 
+                      00006 ;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+                      00007 ;==========================================================================
+                      00008 
+Message[301]: MESSAGE: (Processor-header file mismatch.  Verify selected processor.)
+                      00703         LIST
+                      00025     include "c:\microchip\include\pic10f322_m.inc"
+                      00001 ;NAME: pic10f322_m.inc
+                      00002 ;DESCRIPTION: macros utiles lors de l'utilisation du PIC10F322
+                      00003 ;AUTEUR: Jacques Deschênes
+                      00004 ;DATE: 2012-10-17
+                      00005 ;DERNIÈRE RÉVISION: 2012-11-12
+                      00006 
+                      00007 #include P10F322.INC
+                      00704         LIST
+                      00705 
+                      00706 ;==========================================================================
+                      00707 ;  MPASM PIC10F322 processor include
+                      00708 ; 
+                      00709 ;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+                      00710 ;==========================================================================
+                      00711 
+Message[301]: MESSAGE: (Processor-header file mismatch.  Verify selected processor.)
+Message[310]: Superseding current maximum RAM and RAM map.
+                      01406         LIST
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00008 
+  007F                00009   constant MAXRAM = 0x7F
+  0200                00010   constant MAXFLASH = D'512'
+  0040                00011   constant MINRAM = 0x40
+  0001                00012   constant BANKS = 1 ; 1 seule banque de RAM
+  0002                00013   constant PAGES = 2 ; 2 pages de FLASH
+  0010                00014   constant ROWSIZE = D'16' ; nombre de mots dans 1 ligne pour la programmation FLASH
+                      00015 
+                      00016 #define _MCLRE_REALLY_OFF ( _MCLRE_OFF & _LVP_OFF )
+                      00017 
+                      00018 #define default_config  __config _MCLRE_REALLY_OFF & _WDTE_SWDTEN & _FOSC_INTOSC
+                      00019 
+                      00020 wait_hfosc_stable macro ; attend que l'oscillateur haute fréquence interne soit stable
+                      00021    btfss OSCCON, HFIOFR
+                      00022    goto $-1
+                      00023    btfss OSCCON, HFIOFS
+                      00024    goto $-1
+                      00025    endm
+                      00026 
+                      00027 wait_lfosc_ready macro ; attend que l'oscillateur interne basse fréquence
+                      00028    btfss OSCCON, LFIOFR ; soit prêt
+                      00029    goto $-1
+                      00030    endm
+                      00031 
+                      00032 clear_ram macro
+                      00033 ; mise à zéro de la RAM
+                      00034     movlw MINRAM
+                      00035     movwf FSR
+                      00036 clear_ram_loop
+                      00037     clrf INDF
+                      00038     incf FSR
+                      00039     btfss FSR,7
+                      00040     goto clear_ram_loop
+                      00041     endm
+                      00042 
+                      00043 
+                      00044 basic_setup macro ; désactive tous les périphériques.
+                      00045    clrf INTCON ; désactivation interruption
+                      00046    clrf ANSELA
+                      00047    bcf CLKRCON, CLKROE ; pas de sortie de Fosc/4
+                      00048    bcf FVRCON, FVREN ; désactive la référence de voltage fixe
+                      00049    bcf T2CON, TMR2ON ; désactive le timer2
+                      00050    bcf PWM1CON, PWM1EN ; désactive le PWM1
+                      00051    bcf PWM2CON, PWM2EN ; désactive le PWM2
+                      00052    bcf CLC1CON, LC1EN ; désactive CLC1
+                      00053    bcf NCO1CON, N1EN ; désactive le NCO
+                      00054    bcf CWG1CON0, G1EN ; désactive le CWG1
+                      00055    clrf OPTION_REG
+                      00056    bsf OPTION_REG, PSA ; pré-scale désactivé
+                      00057    movlw 0xF
+                      00058    movwf TRISA ; toutes des entrées
+                      00059    movwf WPUA  ; active les pullup
+                      00060    endm
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00061 
+  0000                00062   constant OUT = 0
+  0001                00063   constant INP = 1
+                      00064 set_io_dir macro pin, dir ; établi une broche comme entrée ou sortie
+                      00065   if dir
+                      00066     bsf TRISA, pin  ; input
+                      00067   else
+                      00068     bcf TRISA, pin  ; output
+                      00069   endif
+                      00070   endm
+                      00071 
+                      00072 set_clk_freq macro freq; initialize clock frequency
+                      00073      movlw B'00001111'
+                      00074      andwf OSCCON, F
+                      00075    if freq == D'31'
+                      00076       exitm
+                      00077    endif
+                      00078    if freq == D'250'
+                      00079       movlw B'00010000'
+                      00080       iorwf OSCCON, F
+                      00081       exitm
+                      00082    endif
+                      00083    if freq == D'500'
+                      00084       movlw B'00100000'
+                      00085       iorwf OSCCON, F
+                      00086       exitm
+                      00087    endif
+                      00088    if freq == D'1'
+                      00089       movlw B'00110000'
+                      00090       iorwf OSCCON, F
+                      00091       exitm
+                      00092    endif
+                      00093    if freq == D'2'
+                      00094       movlw B'01000000'
+                      00095       iorwf OSCCON, F
+                      00096       exitm
+                      00097    endif
+                      00098    if freq == D'4'
+                      00099       movlw B'01010000'
+                      00100       iorwf OSCCON, F
+                      00101       exitm
+                      00102    endif
+                      00103    if freq == D'8'
+                      00104      movlw B'01100000'
+                      00105      iorwf OSCCON, F
+                      00106      exitm
+                      00107    endif
+                      00108    if freq == D'16'
+                      00109      movlw B'01110000'
+                      00110      iorwf OSCCON, F
+                      00111    endif
+                      00112    endm
+                      00113 
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00114 enable_clk_out macro ; active la sortie Fosc/4 sur RA2
+                      00115    bcf NCO1CON, N1OE
+                      00116    bsf CLKRCON, CLKROE
+                      00117    endm
+                      00118 
+                      00119 disable_clk_out macro ; désactive la sortie Fosc/4 sur RA2
+                      00120    bcf CLKRCON, CLKROE
+                      00121    endm
+                      00122 
+                      00123 enable_interrupt macro ; active les interruption
+                      00124    bsf INTCON, GIE
+                      00125    endm
+                      00126 
+                      00127 disable_interrupt macro ; désactive les interruption
+                      00128    bcf INTCON, GIE
+                      00129    endm
+                      00130 
+                      00131 enable_periph_int macro ; active les interruptions périphériques
+                      00132    bsf INTCON, PEIE
+                      00133    endm
+                      00134 
+                      00135 disable_periph_int macro ; désactive les interruptions périphérique
+                      00136    bcf INTCON, PEIE
+                      00137    endm
+                      00138 
+                      00139 enable_ext_int macro ; active l'interruption externe
+                      00140    bsf INTCON, INTE
+                      00141    endm
+                      00142 
+                      00143 disable_ext_int macro ; désactive les interruption externe
+                      00144    bcf INTCON, INTE
+                      00145    endm
+                      00146 
+                      00147 bra_ext_int macro address ; branchement sur interruption externe
+                      00148    btfsc INTCON, INTF
+                      00149    goto address
+                      00150    endm
+                      00151 
+                      00152 enable_tmr0_int macro ; active l'interruption du timer0
+                      00153    bcf INTCON, TMR0IF
+                      00154    bsf INTCON, TMR0IE
+                      00155    endm
+                      00156 
+                      00157 disable_tmr0_int macro ; désactive l'interruption du timer0
+                      00158   bcf INTCON, TMR0IE
+                      00159   endm
+                      00160 
+                      00161 bra_tmr0_int macro address ; branchement sur interruption timer0
+                      00162   btfsc INTCON, TMR0IF
+                      00163   goto address
+                      00164   endm
+                      00165 
+                      00166 enable_tmr2_int macro ; active les interruptions sur timer2
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00167     bsf PIE1, TMR2IE
+                      00168     endm
+                      00169 
+                      00170 disable_tmr2_int macro ; désactive les interruptions sur timer2
+                      00171     bcf PIE1, TMR2IE
+                      00172     endm
+                      00173 
+                      00174 ;;;;;;;;;;;;;  IOC  interrupt changement d'état de broche  ;;;;;;;;;;;;;;;
+                      00175 
+                      00176 enable_ioc_int macro ; active les interruptions sur changement d'état E/S
+                      00177   bcf INTCON, IOCIF
+                      00178   clrf IOCAF
+                      00179   bsf INTCON, IOCIE
+                      00180   endm
+                      00181 
+                      00182 disable_ioc_int macro ; désactive les interruptions sur changement d'état E/S
+                      00183   bcf INTCON, IOCIE
+                      00184   endm
+                      00185 
+  0000                00186   constant IOC_RISING = 0
+  0001                00187   constant IOC_FALLING = 1
+  0002                00188   constant IOC_BOTH = 2
+                      00189 set_ioc_edge macro pin, edge ; sur quel changement doit se produire l'interruption
+                      00190   if edge == IOC_RISING
+                      00191   bsf IOCAP, pin
+                      00192   bcf IOCAN, pin
+                      00193   exitm
+                      00194   endif
+                      00195   if edge == IOC_FALLING
+                      00196   bsf IOCAN, pin
+                      00197   bcf IOCAP, pin
+                      00198   exitm
+                      00199   endif
+                      00200   bsf IOCAN, pin
+                      00201   bsf IOCAP, pin
+                      00202   endm
+                      00203 
+                      00204 clear_ioc_flag macro ; remet à zéro les drapeaux indicateurs
+                      00205    movlw 0xF0
+                      00206    andwf IOCAF,F
+                      00207    endm
+                      00208 
+                      00209 bra_ioc_int macro address ; branche sur interruption causé par un changement
+                      00210   btfsc INTCON, IOCIF     ; d'état E/S
+                      00211   goto address
+                      00212   endm
+                      00213 
+                      00214 clear_ioc_if macro
+                      00215 ;remet à zéro le drapeu d'interruption
+                      00216     bcf INTCON, IOCIF
+                      00217     movlw H'FF'
+                      00218     xorwf IOCAF, W
+                      00219     andwf IOCAF, F
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00220     endm
+                      00221 
+                      00222 
+                      00223 ;;;;;;;;;;    adc interrtupt ;;;;;;;;;;;;;;;;;;;
+                      00224 
+                      00225 enable_adc_int macro ; active les interruptions sur ADC
+                      00226   bsf PIE1, ADIE
+                      00227   endm
+                      00228 
+                      00229 disable_adc_int macro ; désactive les interruptions sur ADC
+                      00230   bcf PIE1, ADIE
+                      00231   endm
+                      00232 
+                      00233 bra_adc_int macro address ; branchement sur interruption ADC
+                      00234   btfsc PIR1, ADCIF
+                      00235   goto address
+                      00236   endm
+                      00237 
+                      00238 enable_nco1_int macro ; active les interruptions sur nco1
+                      00239   bsf PIE1, NCO1IE
+                      00240   endm
+                      00241 
+                      00242 disable_nco1_int macro ; désactive les interruptions sur nco1
+                      00243   bcf PIE1, NCO1IE
+                      00244   endm
+                      00245 
+                      00246 bra_nco1_int macro address ; branchement sur interruption nco1
+                      00247   btfsc PIR1, NCO1IF
+                      00248   goto address
+                      00249   endm
+                      00250 
+                      00251 enable_clc1_int macro ; active les interruptions sur clc1
+                      00252   bsf PIE1, CLC1IE
+                      00253   endm
+                      00254 
+                      00255 disable_clc1_int macro ; désactive les interruptions sur clc1
+                      00256   bcf PIE1, CLC1IE
+                      00257   endm
+                      00258 
+                      00259 bra_clc1_int macro address ; branchement sur interruption clc1
+                      00260   btfsc PIR1, CLC1IF
+                      00261   goto address
+                      00262   endm
+                      00263 
+                      00264 bra_tmr2_int macro address ; branchement sur interruption timer2
+                      00265   btfsc PIR1, TMR2IF
+                      00266   goto address
+                      00267   endm
+                      00268 
+  0000                00269   constant IOC_INT  = 0
+  0001                00270   constant EXT_INT  = 1
+  0002                00271   constant TMR0_INT = 2
+  0009                00272   constant TMR2_INT = D'8'+1
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  000B                00273   constant CLC1_INT  = D'8'+3
+  000C                00274   constant NCO1_INT  = D'8'+4
+  000E                00275   constant ADC_INT  = D'8'+6
+                      00276 bra_int macro int_src, address ;branche à l'adresse s'il la source de
+                      00277                                   ; l'interruption est int_src
+                      00278    if int_src < D'8'
+                      00279       btfsc INTCON, int_src
+                      00280       goto address
+                      00281       exitm
+                      00282    end if
+                      00283    btfsc PIR1, (int_src - D'8')
+                      00284    goto address
+                      00285    endm
+                      00286 
+                      00287 
+                      00288 ;;;;;;;;;;;   convertisseur analogue/numérique ;;;;;;;;;;;;;;;
+                      00289 
+                      00290 disable_adc macro ; déssactive le convertisseur A/N
+                      00291   bcf ADCON, ADON
+                      00292   clrf ANSELA
+                      00293   endm
+                      00294 
+                      00295 enable_adc macro ; active le convertisseur mais ne sélectionne pas de d'entrée
+                      00296   clrf ANSELA    ; aucune entrée ANx de sélectionnée.
+                      00297   movlw B'00011111' ; efface la sélection freq. d'horlorge
+                      00298   andwf ADCON, F
+                      00299   movlw B'01100001' ; horloge = Frc, ADON=1
+                      00300   iorwf ADCON, F
+                      00301   endm
+                      00302 
+  0000                00303   constant ADC_CLK_FOSCDIV2 = 0
+  0001                00304   constant ADC_CLK_FOSCDIV8 = 1
+  0002                00305   constant ADC_CLK_FOSCDIV32 = 2
+  0003                00306   constant ADC_CLK_FRC = 3
+  0004                00307   constant ADC_CLK_FOSCDIV4 = 4
+  0005                00308   constant ADC_CLK_FOSCDIV16 = 5
+  0006                00309   constant ADC_CLK_FOSCDIV64 = 6
+  0007                00310   constant ADC_CLK_FRC2 = 7
+                      00311 select_adc_clk macro clk ; sélection du signal horloge pour la conversion A/N
+                      00312   movlw clk << 5
+                      00313   iorwf ADCON
+                      00314   endm
+                      00315 
+  0000                00316   constant INP_MODE_DIG = 0
+  0001                00317   constant INP_MODE_AN = 1
+                      00318 set_inp_mode macro pin, mode   ; sélectionne le mode d'entrée d'une broche digital ou analogue
+                      00319   if mode == INP_MODE_DIG      ; pin = {RA0,RA1,RA2}
+                      00320      bcf ANSELA, pin           ; mode = {INP_MODE_DIG, INP_MODE_AN}
+                      00321   else
+                      00322      bsf ANSELA, pin
+                      00323   endif
+                      00324   endm
+                      00325 
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00326 ; canaux lecture analogue/numérique
+  0000                00327   constant CH_AN0 =  B'00000000'
+  0004                00328   constant CH_AN1 =  B'00000100'
+  0008                00329   constant CH_AN2 =  B'00001000'
+  0018                00330   constant CH_TEMP = B'00011000'
+  001C                00331   constant CH_FVR =  B'00011100'
+                      00332 select_adc_channel  macro ch ; sélection sur quel canal faire la lecture
+                      00333    movlw B'11100011'
+                      00334    andwf ADCON, F
+                      00335    movlw ch
+                      00336    iorwf ADCON, F
+                      00337    if ch == CH_AN0 
+                      00338       bsf ANSELA, 0
+                      00339    endif
+                      00340    if ch == CH_AN1
+                      00341       bsf ANSELA, 1
+                      00342    endif
+                      00343    if ch == CH_AN2
+                      00344       bsf ANSELA, 2
+                      00345    endif
+                      00346    endm
+                      00347 
+                      00348 
+                      00349 start_adc macro ; démarre une lecture mais n'attend pas la fin
+                      00350   bcf PIR1, ADIF
+                      00351   bsf ADCON, GO_NOT_DONE
+                      00352   endm
+                      00353 
+                      00354 read_adc macro ; démarre et attend que la lecture soit complétée
+                      00355   btfss ADCON, GO_NOT_DONE
+                      00356   bsf ADCON, GO_NOT_DONE
+                      00357   btfsc ADCON, GO_NOT_DONE
+                      00358   goto $-1
+                      00359   endm
+                      00360 
+                      00361 
+                      00362 
+                      00363 
+                      00364 ;;;;;;;;;;;;;;;  FVR: référence de voltage fixe ;;;;;;;;;;;;;
+                      00365 
+                      00366 enable_fvr macro  ; active la référence
+                      00367    bsf FVRCON, FVREN
+                      00368    btfss FVRCON, FVRRDY
+                      00369    goto $-1
+                      00370    endm
+                      00371 
+                      00372 disable_fvr macro ; désactive la référence
+                      00373    bcf FVRCON, FVREN
+                      00374    endm
+                      00375 
+  0000                00376   constant FVR_0V = 0
+  0001                00377   constant FVR_1V = 1
+  0002                00378   constant FVR_2V = 2
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  0003                00379   constant FVR_4V = 3
+                      00380 set_fvr_volt macro gain ; défini la valeur de sortie de la référence
+                      00381    movlw gain
+                      00382    iorwf FVRCON, F
+                      00383    endm
+                      00384 
+                      00385 ;;;;;;;;;;;;;  IVR, régulateur de tension interne ;;;;;;;;;;;;;
+                      00386 enable_power_save macro  ; active l'économie d'énergie en mode sleep
+                      00387    bsf VREGCON, VREGPM1
+                      00388    end
+                      00389 
+                      00390 disable_power_save macro ; désactive l'économie d'énergie en mode sleep
+                      00391    bcf VREGCON, VREGPM1
+                      00392    endm
+                      00393 
+                      00394 ;;;;;;;;;;;;;        référence température ;;;;;;;;;;;;;;;;;
+                      00395 
+                      00396 enable_temp macro ; active le capteur de température
+                      00397    bsf FVRCON, TSEN
+                      00398    endm
+                      00399 
+                      00400 disable_temp macro ; désactive le capteur de températeur
+                      00401    bcf FVRCON, TSEN
+                      00402    endm
+                      00403 
+  0000                00404   constant TEMP_RANGE_LOW = 0
+  0001                00405   constant TEMP_RANGE_HIGH = 1
+                      00406 set_temp_range macro range ; définie le range de lecture du capteur de températeur
+                      00407    if TEMP_RANGE_LOW == 0
+                      00408       bcf FVRCON, TSRNG
+                      00409    else
+                      00410       bsf FVRCON, TSRNG
+                      00411    endif
+                      00412    endm
+                      00413 
+                      00414 ;;;;;;;;;;;;;;;;;;     NCO générateur numériquement programmable  ;;;;;;;;;;;
+                      00415 
+                      00416 enable_nco macro      ; active le générateur
+                      00417   bsf NCO1CON, N1EN
+                      00418   endm
+                      00419 
+                      00420 disable_nco macro    ; désactive le générateur
+                      00421   bcf NCO1CON, N1EN
+                      00422   endm
+                      00423 
+                      00424 enable_nco_output macro  ; active la sortie sur RA2
+                      00425   bsf NCO1CON, N1OE
+                      00426   endm
+                      00427 
+                      00428 disable_nco_output macro  ; désactive la sortie sur RA2
+                      00429   bcf NCO1CON,N1OE
+                      00430   endm
+                      00431 
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  0000                00432   constant NCO_CLK_NCO1CLK = 0 ; entrée broche NCO1
+  0001                00433   constant NCO_CLK_FOSC = 1   ; fréquence oscillateur MCU
+  0002                00434   constant NCO_CLK_INTOSC = 2  ;oscillateur interne haute fréquence
+  0003                00435   constant NCO_CLK_LC1OUT = 3 ; sortie cellule CLC1
+                      00436 set_nco_clock  macro clk  ; défini la source horloge du NCO
+                      00437   movlw 0xFC
+                      00438   andwf NCO1CLK, F
+                      00439   if clk > 0
+                      00440   movlw clk
+                      00441   iorwf NCO1CLK, F
+                      00442   endif
+                      00443   endm
+                      00444 
+  0000                00445   constant NCO_POL_LOW = 0
+  0001                00446   constant NCO_POL_HIGH = 1
+                      00447 set_nco_output_polarity macro pol  ; défini la polarité active
+                      00448   if pol == NCO_POL_LOW
+                      00449     bcf NCO1CON, N1POL
+                      00450   else
+                      00451     bsf NCO1CON, N1POL
+                      00452   endif
+                      00453   endm
+                      00454 
+  0000                00455   constant NCO_MODE_SQUARE_WAVE = 0
+  0001                00456   constant NCO_MODE_PULSE = 1
+                      00457 set_nco_mode macro mode ;
+                      00458    if mode == NCO_MODE_PULSE
+                      00459      bsf NCO1CON, N1PFM
+                      00460    else
+                      00461      bcf NCO1CON, N1PFM
+                      00462    endif
+                      00463    endm
+                      00464 
+                      00465 set_nco_pulse_width macro width ; largeur de l'impulsion en multiple de signal horloge
+                      00466    movlw 0x1F                   ; width {0-7} pulse_width = 2^^width
+                      00467    andwf NCO1CLK, F
+                      00468    movlw width << 5
+                      00469    iorwf NCO1CLK, F
+                      00470    endm
+                      00471 
+                      00472 set_nco_incr macro incr  ; défini l'incrément du NCO
+                      00473    movlw incr>>8
+                      00474    movwf NCO1INCH
+                      00475    movlw incr & 0xFF
+                      00476    movwf NCO1INCL
+                      00477    endm
+                      00478 
+                      00479 ;;;;;;;;;;;;;;;;;;  TIMER 0 ;;;;;;;;;;;;;;;;;;;;;;;;
+                      00480 
+  0001                00481   constant TMR0_EXT_CLK = 1 
+  0000                00482   constant TMR0_FOSC4 = 0
+                      00483 set_timer0_clock macro clk ; signal utilisé à l'entrée du timer 0
+                      00484   if   clk == TMR0_EXT_CLK
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00485      bsf OPTION_REG, T0CS
+                      00486   else
+                      00487      bcf OPTION_REG, T0CS
+                      00488   endif
+                      00489   endm
+                      00490 
+  0000                00491   constant TMR0_DIV2 = 0
+  0001                00492   constant TMR0_DIV4 = 1
+  0002                00493   constant TMR0_DIV8 = 2
+  0003                00494   constant TMR0_DIV16 = 3
+  0004                00495   constant TMR0_DIV32 = 4
+  0005                00496   constant TMR0_DIV64 = 5
+  0006                00497   constant TMR0_DIV128 = 6
+  0007                00498   constant TMR0_DIV256 = 7
+                      00499 set_timer0_prescale macro div ; défini le diviseur du timer0 { 0-7 }
+                      00500    movlw 0xF0                 ; diviseur = 2^^(div+1)
+                      00501    andwf OPTION_REG,F
+                      00502    if div != 0
+                      00503    movlw div
+                      00504    iorwf OPTION_REG, F
+                      00505    endif
+                      00506    endm
+                      00507 
+                      00508 disable_timer0_prescale macro ; désactive le diviseur
+                      00509    bsf OPTION_REG, PSA
+                      00510    endm
+                      00511 
+                      00512 
+                      00513 init_timer0  macro count ; initialise le TIMER 0 avec la valeur count
+                      00514    movlw count           ; 0 - 255
+                      00515    movwf TMR0
+                      00516    endm
+                      00517 
+                      00518 wait_timer0_rollover macro ; attend que le count du timer0 revienne à zéro
+                      00519    movfw TMR0              ; ne fonctionne que si le diviseur >= 4
+                      00520    skpz
+                      00521    goto $-2
+                      00522    endm
+                      00523 
+                      00524 ;;;;;;;;;;;;;;;;;;;;; TIMER 2 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      00525 
+                      00526 enable_timer2 macro    ;activation du timer 2
+                      00527    bsf T2CON, TMR2ON
+                      00528    endm
+                      00529 
+                      00530 disable_timer2 macro  ; désactivation du timer 2
+                      00531   bcf T2CON, TMR2ON
+                      00532   endm
+                      00533 
+  0000                00534   constant TMR2_DIV1 = 0 ; pas de division
+  0001                00535   constant TMR2_DIV4 = 1 ; divise par 4
+  0002                00536   constant TMR2_DIV16 = 2 ; divise par 16
+  0003                00537   constant TMR2_DIV64 = 3 ; divise par 64
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00538 set_timer2_prescale  macro div  ; ajuste le prédiviseur du timer 2
+                      00539   movlw 0xFC
+                      00540   andwf T2CON,F
+                      00541   if div > 0
+                      00542   movlw div
+                      00543   iorwf T2CON, F
+                      00544   endif
+                      00545   endm
+                      00546 
+  0000                00547   constant TMR2_PS1 = 0 ; pas de divisition
+  0001                00548   constant TMR2_PS2 = 1
+  0002                00549   constant TMR2_PS3 = 2
+  0003                00550   constant TMR2_PS4 = 3
+  0004                00551   constant TMR2_PS5 = 4
+  0005                00552   constant TMR2_PS6 = 5
+  0006                00553   constant TMR2_PS7 = 6
+  0007                00554   constant TMR2_PS8 = 7
+  0008                00555   constant TMR2_PS9 = D'8'
+  0009                00556   constant TMR2_PS10 = D'9'
+  000A                00557   constant TMR2_PS11 = D'10'
+  000B                00558   constant TMR2_PS12 = D'11'
+  000C                00559   constant TMR2_PS13 = D'12'
+  000D                00560   constant TMR2_PS14 = D'13'
+  000E                00561   constant TMR2_PS15 = D'14'
+  000F                00562   constant TMR2_PS16 = D'15'
+                      00563 
+                      00564 set_timer2_postscale macro div ; ajuste le postdiviseur du timer 2
+                      00565   movlw 0x7
+                      00566   andwf T2CON, F
+                      00567   movlw div << 3
+                      00568   iorwf T2CON, F
+                      00569   endm
+                      00570 
+                      00571 init_timer2 macro count ; charge le registre TMR2 avec count
+                      00572   movlw count
+                      00573   movwf TMR2
+                      00574   endm
+                      00575 
+                      00576 init_timer2_period macro count ; charge le registre PR2 avec count
+                      00577   movlw count
+                      00578   movwf PR2
+                      00579   endm
+                      00580 
+                      00581 ;;;;;;;;;;;;;;;;; module PWM ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      00582 
+  0001                00583   constant PWM_CH1 = 1
+  0002                00584   constant PWM_CH2 = 2
+                      00585 
+                      00586 enable_pwm_channel macro channel ; active le canal pwm 1 ou 2
+                      00587    if channel == PWM_CH1
+                      00588      bsf PWM1CON, PWM1EN
+                      00589    else
+                      00590      bsf PWM2CON, PWM2EN
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00591    endif
+                      00592    endm
+                      00593 
+                      00594 disable_pwm_channel macro channel ; désactive le canal pwm 1 ou 2
+                      00595   if channel == PWM_CH1
+                      00596     bcf PWM1CON, PWM1EN
+                      00597   else
+                      00598     bcf PWM2CON, PWM2EN
+                      00599   endif
+                      00600   endm
+                      00601 
+                      00602 enable_pwm_output macro channel ; active la sortie pwm du canal 1 ou 2
+                      00603   if channel == PWM_CH1
+                      00604     bsf PWM1CON, PWM1OE
+                      00605   else
+                      00606     bsf PWM2CON, PWM2OE
+                      00607   endif
+                      00608   endm
+                      00609 
+                      00610 disable_pwm_output macro channel ; désactive la sortie pwm du canal 1 ou 2
+                      00611   if channel == PWM_CH1
+                      00612     bcf PWM1CON, PWM1OE
+                      00613   else
+                      00614     bcf PWM2CON, PWM2OE
+                      00615   endif
+                      00616   endm
+                      00617 
+  0000                00618   constant PWM_POL_H = 0
+  0001                00619   constant PWM_POL_L = 1
+                      00620 set_pwm_polarity macro channel, pol ; défini la polarité de la sortie
+                      00621   if channel == PWM_CH1
+                      00622   if pol==PWM_POL_H
+                      00623     bcf PWM1CON, PWM1POL
+                      00624   else
+                      00625     bsf PWM1CON, PWM1POL
+                      00626    endif
+                      00627   else
+                      00628   if pol==PWM_POL_H
+                      00629     bcf PWM2CON, PWM2POL
+                      00630   else
+                      00631     bsf PWM2CON, PWM2POL
+                      00632    endif
+                      00633   endif
+                      00634   endm
+                      00635 
+                      00636 set_pwm_duty_cycle macro channel, duty ; défini le dudy cycle
+                      00637   if channel == PWM_CH1                
+                      00638      movlw (duty & 0x3FF) >> 2
+                      00639      movwf PWM1DCH
+                      00640      movlw (duty & 0x3) << 6
+                      00641      movwf PWM1DCL
+                      00642   else
+                      00643      movlw (duty & 0x3FF) >> 2
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00644      movwf PWM2DCH
+                      00645      movlw (duty & 0x3) << 6
+                      00646      movwf PWM2DCL
+                      00647   endif
+                      00648   endm
+                      00649 
+                      00650 ;;;;;;;;;;;;;  CLC  cellule logique configurable ;;;;;;;;;;;;;;;;
+                      00651 
+                      00652 enable_clc macro    ; active la cellule
+                      00653   bsf CLC1CON, LC1EN
+                      00654   endm
+                      00655 
+                      00656 disable_clc macro   ; désactive la cellule
+                      00657   bcf CLC1CON, LC1EN
+                      00658   endm
+                      00659 
+                      00660 enable_clc_output macro ; active la sortie
+                      00661   bsf CLC1CON, LC1OE
+                      00662   endm
+                      00663 
+                      00664 disable_clc_output macro ; désactive la sortie
+                      00665   bcf CLC1CON, LC1OE
+                      00666   endm
+                      00667 
+                      00668 ;;;;;;;;;;;;;;;;;; CWG  générateur d'onde complémentaire  ;;;;;;;;;;;;;;
+                      00669 
+                      00670 enable_cwg macro
+                      00671   bsf CWG1CON0, G1EN
+                      00672   endm
+                      00673 
+                      00674 disable_cwg macro
+                      00675   bcf CWG1CON0, G1EN
+                      00676   endm
+                      00677 
+  0005                00678   constant CWG_OUTA = G1OEA
+  0006                00679   constant CWG_OUTB = G1OEB
+                      00680 enable_cwg_output macro out ; active la sortie A ou B
+                      00681   bsf CWG1CON0, out
+                      00682   endm
+                      00683 
+                      00684 disable_cwg_output macro out ; désactive la sortie A ou B
+                      00685   bcf CWG1CON0, out
+                      00686   endm
+                      00687 
+                      00688 
+  0000                00689   constant CWG_INP_PWM1 = 0
+  0001                00690   constant CWG_INP_PWM2 = 1
+  0002                00691   constant CWG_INP_NCO  = 2
+  0003                00692   constant CWG_INP_CLC  = 3
+                      00693 
+                      00694 select_cwg_input macro inp ; sélectionne le signal d'entrée
+                      00695   movlw 0xFC
+                      00696   andwf CWG1CON1, F
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00697   if inp != 0
+                      00698   movlw inp
+                      00699   iorwf CWG1CON1, F
+                      00700   endif
+                      00701   endm
+                      00702 
+                      00703 
+                      00704 
+                      00705 ;;;;;;;;;;;;;; lecture de la mémoire flash en exécution ;;;;;;;;
+                      00706 
+                      00707 read_prog_mem macro addr ; fait la lecture d'un addresse
+                      00708   movlw high addr        ; le résultat est dans PMDATL et PMDATH
+                      00709   movwf PMADRH
+                      00710   movlw low addr
+                      00711   movwf PMADRL
+                      00712   bcf PMCON1, CFGS
+                      00713   bsf  PMCON1, RD
+                      00714   nop
+                      00715   nop
+                      00716   endm
+                      00717 
+                      00718 
+                      00719 
+                      00026     radix dec
+                      00027 
+2007   3E26           00028     __config _FOSC_INTOSC & _MCLRE_OFF & _LVP_OFF & _WDTE_OFF & _CP_ON
+                      00029 
+                      00030 ; constantes
+                      00031 #define PWM_PERIOD 254  ; peut nécessiter un ajustement de quelques unités (252-255)
+                      00032                         ; dépend de la fréquence du HFOSC qui peut varier
+                      00033                         ; d'un MCU à l'autre.
+                      00034 #define SYNC_WIDTH  75  ; largeur de l'impulsion de synchronisation horizontale
+                      00035                         ; signal NTSC.
+                      00036 
+                      00037 ; indicateurs booléens dans variable 'flags'
+                      00038 #define F_BIT9 0  ; 9ième bit de ln_cnt
+                      00039 #define F_VIDEO 1 ; affichage actif
+                      00040 #define F_TONE 2  ; son actif
+                      00041 #define F_PAUSE 3 ; action arrêtée
+                      00042 #define F_SERVE 4 ; qui a le service, 0 gauche, 1 droite
+                      00043 #define F_SCORE 5 ; 0 point à gauche, 1 point à droite
+                      00044 #define F_RMOVED 6 ; joueur de droit a bougé sa raquette
+                      00045 #define F_LMOVED 7 ; joueur de gauche a bougé sa raquette
+                      00046 
+                      00047 
+                      00048 #define VIDEO_OUT RA0  ; sortie signal vidéo
+                      00049 #define SYNC_OUT  RA1  ; sortie synchronisation NTSC
+                      00050 #define AUDIO_OUT RA2  ; sortie audio
+                      00051 #define DOWN_BTN RA2   ; bouton déplacement vers le bas
+                      00052 #define UP_BTN RA3     ; vers le haut
+                      00053 
+                      00054 #define BALL_DLY  7     ; détermine la vitesse de la balle
+                      00055 #define SCORE_TONE 30   ; tonalité lorsqu'un point est compté
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00056 #define SCORE_LENGTH 50 ; durée de la tonalité
+                      00057 #define PING_TONE 58    ; tonalité lorsque la balle frappe la raquette ou rebondie.
+                      00058 #define PING_LENGTH 6   ; durée
+                      00059 #define BTN_DLY 12       ; détermine la vitesse des raquettes
+                      00060 
+                      00061 ; macros
+                      00062 
+                      00063 delay_us macro us ; délais en micro-secondes, overhead 250nsec.
+                      00064     movlw us
+                      00065     addlw H'FF'
+                      00066     skpz
+                      00067     goto $-2
+                      00068     endm
+                      00069 
+                      00070 tone macro freq   ; démarre la tonalitée
+                      00071     set_nco_incr freq
+                      00072     enable_nco_output
+                      00073     bsf flags, F_TONE
+                      00074     if freq==PING_TONE
+                      00075     movlw PING_LENGTH
+                      00076     else
+                      00077     movlw SCORE_LENGTH
+                      00078     endif
+                      00079     movwf tone_length
+                      00080     bcf TRISA, AUDIO_OUT
+                      00081     endm
+                      00082 
+                      00083 wait_count macro count ; attend que TMR2 est atteint le compte
+                      00084     movlw count
+                      00085     subwf TMR2,W
+                      00086     skpc
+                      00087     goto $-3
+                      00088     endm
+                      00089 
+                      00090 ; variables
+                      00091     udata MINRAM
+0040                  00092 disp res 42  ; mémoire bitmap affichage 16x21 pixels
+006A                  00093 LScore res 1    ; pointage joueur de gauche
+006B                  00094 RScore res 1    ; pointage joueur de droite
+006C                  00095 flags res 1   ; indicateurs booléens
+006D                  00096 ln_cnt res 1  ; compteur lignes scan NTSC, 9ième bit dans 'flags'
+006E                  00097 ballx res 1 ; position horizontale de la balle
+006F                  00098 bally res 1 ; position verticale de la balle
+0070                  00099 dx  res 1 ; delta x déplacement balle {-1,0,1}
+0071                  00100 dy  res 1 ; delta y déplacement balle {-1,0,1}
+0072                  00101 ball_speed res 1 ; vitesse de la balle, multiple de 16,7msec
+0073                  00102 tone_length res 1 ; durée de la tonalité
+0074                  00103 btn_dly res 1   ; délais lecture boutons
+0075                  00104 LPaddle res 1   ; position raquette joueur de gauche
+0076                  00105 RPaddle res 1   ; position raquette joueur de droite
+0077                  00106 temp res 1      ; 3 variables temporaires
+0078                  00107 temp2 res 1
+0079                  00108 temp3 res 1
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00109 
+                      00110     code
+                      00111     org 0
+0000                  00112 rst_vector
+0000   018E           00113     clrf OPTION_REG
+0001   1589           00114     bsf WPUA, RA3
+0002   2???           00115     goto init
+                      00116 
+                      00117     org 4
+0004                  00118 isr_vector
+0004   3001           00119     movlw 1
+Message[305]: Using default destination of 1 (file).
+0005   0A??           00120     incf ln_cnt
+0006   1903           00121     skpnz
+Message[305]: Using default destination of 1 (file).
+0007   06??           00122     xorwf flags
+                      00123     ; céduleur de tâche
+0008   1880           00124     btfsc flags, F_VIDEO
+0009   2???           00125     goto video_output
+000A   1C00           00126     btfss flags, F_BIT9
+000B   2???           00127     goto $+5
+000C   3006           00128     movlw 6
+000D   02??           00129     subwf ln_cnt, W
+000E   1903           00130     skpnz
+000F   2???           00131     goto sync_start
+0010   3001           00132     movlw 1
+0011   02??           00133     subwf ln_cnt, W
+0012   1903           00134     skpnz
+0013   2???           00135     goto update_score
+0014   3003           00136     movlw 3
+0015   02??           00137     subwf ln_cnt, W
+0016   1903           00138     skpnz
+0017   2???           00139     goto sync_end
+0018   3006           00140     movlw 6
+0019   02??           00141     subwf ln_cnt, W
+001A   1903           00142     skpnz
+001B   2???           00143     goto move_ball
+001C   3007           00144     movlw 7
+001D   02??           00145     subwf ln_cnt, W
+001E   1903           00146     skpnz
+001F   2???           00147     goto read_buttons
+0020   301D           00148     movlw 29
+0021   02??           00149     subwf ln_cnt, W
+0022   1903           00150     skpnz
+0023   2???           00151     goto disp_start
+0024   2???           00152     goto isr_exit ; aucune tâche à accomplir
+0025                  00153 read_buttons
+0025   1900           00154     btfsc flags, F_TONE
+0026   2???           00155     goto isr_exit
+0027   08??           00156     movf btn_dly, F
+0028   1903           00157     skpnz
+0029   2???           00158     call buttons
+002A   2???           00159     goto isr_exit
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+002B                  00160 move_ball
+002B   1D80           00161     btfss flags, F_PAUSE
+002C   2???           00162     call ball_control
+002D   2???           00163     goto isr_exit
+002E                  00164 video_output
+002E   30C6           00165     movlw 198
+002F   02??           00166     subwf ln_cnt, W
+0030   1903           00167     skpnz
+0031   2???           00168     goto disp_end
+0032   2???           00169     call video
+0033   2???           00170     goto isr_exit
+0034                  00171 sync_start
+                      00172     set_pwm_duty_cycle PWM_CH2, ((PWM_PERIOD<<2)-SYNC_WIDTH)
+                          M   if PWM_CH2 == PWM_CH1                
+                          M      movlw (((254<<2)-75) & 0x3FF) >> 2
+                          M      movwf PWM1DCH
+                          M      movlw (((254<<2)-75) & 0x3) << 6
+                          M      movwf PWM1DCL
+                          M   else
+0034   30EB               M      movlw (((254<<2)-75) & 0x3FF) >> 2
+0035   0098               M      movwf PWM2DCH
+0036   3040               M      movlw (((254<<2)-75) & 0x3) << 6
+0037   0097               M      movwf PWM2DCL
+                          M   endif
+0038   08??           00173     movf ball_speed, F
+0039   1D03           00174     skpz
+Message[305]: Using default destination of 1 (file).
+003A   03??           00175     decf ball_speed
+003B   08??           00176     movf btn_dly, F
+003C   1D03           00177     skpz
+003D   03??           00178     decf btn_dly, F
+003E   1D00           00179     btfss flags, F_TONE
+003F   2???           00180     goto $+5
+Message[305]: Using default destination of 1 (file).
+0040   0B??           00181     decfsz tone_length
+0041   2???           00182     goto $+4
+0042   1100           00183     bcf flags, F_TONE
+                      00184     disable_nco_output
+0043   132D               M   bcf NCO1CON,N1OE
+0044   1506           00185     bsf TRISA, AUDIO_OUT
+0045   01??           00186     clrf ln_cnt
+0046   1000           00187     bcf flags, F_BIT9
+0047   2???           00188     call draw_table
+0048   2???           00189     goto isr_exit
+0049                  00190 sync_end
+                      00191     set_pwm_duty_cycle PWM_CH2, SYNC_WIDTH
+                          M   if PWM_CH2 == PWM_CH1                
+                          M      movlw (75   & 0x3FF) >> 2
+                          M      movwf PWM1DCH
+                          M      movlw (75   & 0x3) << 6
+                          M      movwf PWM1DCL
+                          M   else
+0049   3012               M      movlw (75   & 0x3FF) >> 2
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+004A   0098               M      movwf PWM2DCH
+004B   30C0               M      movlw (75   & 0x3) << 6
+004C   0097               M      movwf PWM2DCL
+                          M   endif
+004D   2???           00192     goto isr_exit
+004E                  00193 update_score
+004E   2???           00194     call draw_score
+004F   2???           00195     goto isr_exit
+0050                  00196 disp_start
+0050   1480           00197     bsf flags, F_VIDEO
+0051   2???           00198     goto isr_exit
+0052                  00199 disp_end
+0052   1080           00200     bcf flags, F_VIDEO
+0053                  00201 draw_side
+                      00202     wait_count 67
+0053   3043               M     movlw 67
+0054   0211               M     subwf TMR2,W
+0055   1C03               M     skpc
+0056   2???               M     goto $-3
+0057   2???           00203     goto $+1  ; délais supplémentaire
+0058   1006           00204     bcf TRISA, VIDEO_OUT
+0059   1405           00205     bsf PORTA, VIDEO_OUT
+                      00206     wait_count 208
+005A   30D0               M     movlw 208
+005B   0211               M     subwf TMR2,W
+005C   1C03               M     skpc
+005D   2???               M     goto $-3
+005E   1005           00207     bcf PORTA, VIDEO_OUT
+005F   1406           00208     bsf TRISA, VIDEO_OUT
+0060                  00209 isr_exit
+0060   108C           00210     bcf PIR1, TMR2IF
+0061   0009           00211     retfie
+                      00212 
+                      00213 ; table des glyphes pour les caractères
+                      00214 ; numérique, 2 digits compressés dans
+                      00215 ; 5 octets
+0062                  00216 digits
+0062   0782           00217     addwf PCL, F
+0063   3444 34AC 34A4 00218     dt  H'44',H'AC',H'A4',H'A4',H'4E' ; 0, 1
+       34A4 344E 
+0068   34EE 3422 34CC 00219     dt  H'EE',H'22',H'CC',H'82',H'EE' ; 2, 3
+       3482 34EE 
+006D   34AE 34A8 34EE 00220     dt  H'AE',H'A8',H'EE',H'22',H'2E' ; 4, 5
+       3422 342E 
+0072   34CE 3482 34E2 00221     dt  H'CE',H'82',H'E2',H'A2',H'E2' ; 6, 7
+       34A2 34E2 
+0077   34EE 34AA 34EE 00222     dt  H'EE',H'AA',H'EE',H'A2',H'E6' ; 8, 9
+       34A2 34E6 
+                      00223 
+                      00224 ;******************************
+                      00225 ; video, génère la sortie vidéo
+                      00226 ; entrée: disp est le bitmap
+                      00227 ;         contenant les pixels
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00228 ;         à afficher
+                      00229 ;*******************************
+007C                  00230 video
+007C   3046           00231     movlw 30+40
+007D   02??           00232     subwf ln_cnt, W
+007E   1903           00233     skpnz
+007F   2???           00234     goto draw_side
+                      00235     wait_count 48
+0080   3030               M     movlw 48
+0081   0211               M     subwf TMR2,W
+0082   1C03               M     skpc
+0083   2???               M     goto $-3
+0084   301E           00236     movlw 30
+0085   02??           00237     subwf ln_cnt, W
+0086   0084           00238     movwf FSR
+0087   1006           00239     bcf TRISA, VIDEO_OUT
+0088   3008           00240     movlw 8
+0089   00??           00241     movwf temp
+008A   01??           00242     clrf temp2
+008B   1003           00243     clrc
+008C   0C84           00244     rrf FSR, F
+008D   1003           00245     clrc
+008E   0C84           00246     rrf FSR, F
+008F   1004           00247     bcf FSR, 0 ; début à l'octet pair
+0090   30??           00248     movlw disp
+0091   0784           00249     addwf FSR, F
+0092   0800           00250     movfw INDF
+0093   00??           00251     movwf temp3
+0094                  00252 pixel_loop
+0094   0D??           00253     rlf temp3, F
+0095   0D??           00254     rlf temp3, W
+0096   3901           00255     andlw 1
+0097   3E02           00256     addlw 2
+0098   0085           00257     movwf PORTA
+0099   0B??           00258     decfsz temp, F
+009A   2???           00259     goto pixel_loop
+009B   1800           00260     btfsc temp2, 0
+009C   2???           00261     goto video_exit
+009D   1400           00262     bsf temp2, 0
+Message[305]: Using default destination of 1 (file).
+009E   0A84           00263     incf FSR
+009F   0800           00264     movfw INDF
+00A0   00??           00265     movwf temp3
+00A1   3008           00266     movlw 8
+00A2   1005           00267     bcf PORTA, VIDEO_OUT
+00A3   1405           00268     bsf PORTA, VIDEO_OUT
+00A4   00??           00269     movwf temp
+00A5   1005           00270     bcf PORTA, VIDEO_OUT
+00A6   2???           00271     goto pixel_loop
+00A7                  00272 video_exit
+                      00273     delay_us 1
+00A7   3001               M     movlw 1
+00A8   3EFF               M     addlw H'FF'
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00A9   1D03               M     skpz
+00AA   2???               M     goto $-2
+00AB   1005           00274     bcf PORTA, VIDEO_OUT
+00AC   1406           00275     bsf TRISA, VIDEO_OUT
+00AD   0008           00276     return
+                      00277 
+                      00278 ;***********************************
+                      00279 ; arrête l'action suite en attente
+                      00280 ; du service
+                      00281 ; les raquette sont placées à mi-hauteur
+                      00282 ;***********************************
+00AE                  00283 set_pause
+00AE   1580           00284     bsf flags, F_PAUSE
+00AF   3007           00285     movlw 7
+00B0   00??           00286     movwf bally
+00B1   3006           00287     movlw 6
+00B2   00??           00288     movwf LPaddle
+00B3   00??           00289     movwf RPaddle
+00B4   3001           00290     movlw 1
+00B5   00??           00291     movwf ballx
+00B6   00??           00292     movwf dx
+00B7   1E00           00293     btfss flags, F_SERVE
+00B8   0008           00294     return
+00B9   300E           00295     movlw 14
+00BA   00??           00296     movwf ballx
+Message[305]: Using default destination of 1 (file).
+00BB   09??           00297     comf dx
+Message[305]: Using default destination of 1 (file).
+00BC   0A??           00298     incf dx
+00BD   0008           00299     return
+                      00300 
+                      00301 
+                      00302 ;*********************************
+                      00303 ; bound_paddle, s'assure que les raquettes
+                      00304 ; demeure dans les limites de la table
+                      00305 ; entrée: W contient le pointeur de la raquette
+                      00306 ;         à vérifier
+                      00307 ;*****************************************
+00BE                  00308 bound_paddle    
+00BE   0084           00309     movwf FSR   
+00BF   1B80           00310     btfsc INDF, 7
+00C0   0180           00311     clrf INDF
+00C1   300E           00312     movlw 14
+00C2   0200           00313     subwf INDF, W
+00C3   1D03           00314     skpz
+00C4   0008           00315     return
+00C5   300D           00316     movlw 13
+00C6   0080           00317     movwf INDF
+00C7   0008           00318     return
+                      00319 
+                      00320 ;********************************
+                      00321 ; buttons, fait la lectures des boutons
+                      00322 ; de contrôle du jeux.
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 22
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00323 ; La lecture se fait dans l'intervalle
+                      00324 ; ou l'affichage vidéo est inactif.
+                      00325 ; la sortie vidéo (RA0) est utilisée pour
+                      00326 ; contrôler quel boutons sont lus, i.e.
+                      00327 ; gauche ou droite.
+                      00328 ;*********************************
+00C8                  00329 buttons  
+00C8   1300           00330     bcf flags, F_RMOVED
+00C9   1380           00331     bcf flags, F_LMOVED
+00CA   1005           00332     bcf PORTA, RA0
+00CB   1006           00333     bcf TRISA, RA0 ; mode sortie
+                      00334     delay_us 4
+00CC   3004               M     movlw 4
+00CD   3EFF               M     addlw H'FF'
+00CE   1D03               M     skpz
+00CF   2???               M     goto $-2
+                      00335     ; lecture boutons de droite
+00D0   0805           00336     movfw PORTA
+00D1   00??           00337     movwf temp
+                      00338     ; lecture boutons de gauche
+00D2   1405           00339     bsf PORTA, RA0
+                      00340     delay_us 4
+00D3   3004               M     movlw 4
+00D4   3EFF               M     addlw H'FF'
+00D5   1D03               M     skpz
+00D6   2???               M     goto $-2
+00D7   0805           00341     movfw PORTA
+00D8   00??           00342     movwf temp2
+                      00343     ; remet le port à l'état initial
+00D9   1406           00344     bsf TRISA, RA0
+00DA   1005           00345     bcf PORTA, RA0
+                      00346     ; vérification état boutons de droite.
+00DB   1980           00347     btfsc temp, RA3
+00DC   2???           00348     goto $+3
+Message[305]: Using default destination of 1 (file).
+00DD   03??           00349     decf RPaddle
+00DE   1700           00350     bsf flags, F_RMOVED
+00DF   1900           00351     btfsc temp, RA2
+00E0   2???           00352     goto $+3
+Message[305]: Using default destination of 1 (file).
+00E1   0A??           00353     incf RPaddle
+00E2   1700           00354     bsf flags, F_RMOVED
+                      00355     ; vérification état boutons de gauche
+00E3   1980           00356     btfsc temp2, RA3
+00E4   2???           00357     goto $+3
+Message[305]: Using default destination of 1 (file).
+00E5   03??           00358     decf LPaddle
+00E6   1780           00359     bsf flags, F_LMOVED
+00E7   1900           00360     btfsc temp2, RA2
+00E8   2???           00361     goto $+3
+Message[305]: Using default destination of 1 (file).
+00E9   0A??           00362     incf LPaddle
+00EA   1780           00363     bsf flags, F_LMOVED
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 23
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00EB                  00364 buttons_exit
+00EB   30??           00365     movlw RPaddle
+00EC   2???           00366     call bound_paddle
+00ED   30??           00367     movlw LPaddle
+00EE   2???           00368     call bound_paddle
+00EF   1D80           00369     btfss flags, F_PAUSE
+00F0   0008           00370     return
+00F1   30C0           00371     movlw (1<<F_RMOVED)|(1<<F_LMOVED)
+00F2   05??           00372     andwf flags, W
+00F3   1903           00373     skpnz
+00F4   0008           00374     return
+00F5   1E00           00375     btfss flags, F_SERVE
+00F6   2???           00376     goto test_left_moved
+00F7   1B00           00377     btfsc flags, F_RMOVED
+00F8   1180           00378     bcf flags, F_PAUSE
+00F9   0008           00379     return
+00FA                  00380 test_left_moved
+00FA   1B80           00381     btfsc flags, F_LMOVED
+00FB   1180           00382     bcf flags, F_PAUSE
+00FC   0008           00383     return
+                      00384 
+                      00385 ;********************************
+                      00386 ; set_dy, détermine la valeur de dy
+                      00387 ; si la balle est passé au dessus du centre de la raquette
+                      00388 ; elle repart vers le haut (dy=-1)
+                      00389 ; si la balle frappe la raquette au centre elle
+                      00390 ; repart en ligne droite (dy=0)
+                      00391 ; si elle est au dessous du centre elle repart
+                      00392 ; vers le bas (dy=1)
+                      00393 ; entrée: W = pointeur raquette qui a reçue la balle
+                      00394 ;*********************************
+00FD                  00395 set_dy  
+00FD   0084           00396     movwf FSR
+00FE   0800           00397     movfw INDF
+00FF   3E01           00398     addlw 1
+0100   02??           00399     subwf bally, W
+0101   1903           00400     skpnz
+0102   0008           00401     return
+0103   1803           00402     skpnc
+0104   30FF           00403     movlw -1
+0105   1C03           00404     skpc
+0106   3001           00405     movlw 1
+0107   00??           00406     movwf dy
+0108   0008           00407     return
+                      00408 
+                      00409 ;*******************************
+                      00410 ; ball_control, controle le mouvement
+                      00411 ; de la balle en la faisant rebondir
+                      00412 ; sur les raquettes et sur les bords
+                      00413 ; haut et bas de la table.
+                      00414 ;*******************************
+0109                  00415 ball_control
+0109   08??           00416     movf ball_speed, F
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 24
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+010A   1D03           00417     skpz
+010B   0008           00418     return
+010C   3007           00419     movlw BALL_DLY
+010D   00??           00420     movwf ball_speed
+010E   08??           00421     movfw dx
+Message[305]: Using default destination of 1 (file).
+010F   07??           00422     addwf ballx
+0110   08??           00423     movfw dy
+Message[305]: Using default destination of 1 (file).
+0111   07??           00424     addwf bally
+0112                  00425 check_y_bounds
+0112   1903           00426     skpnz
+0113   2???           00427     goto invert_dy
+0114   300F           00428     movlw 15
+0115   02??           00429     subwf bally, W
+0116   1C03           00430     skpc
+0117   2???           00431     goto check_x_bounds
+0118                  00432 invert_dy
+0118   09??           00433     comf dy, F
+0119   0A??           00434     incf dy, F
+                      00435     tone PING_TONE
+                          M     set_nco_incr 58
+011A   3000               M    movlw 58>>8
+011B   00AB               M    movwf NCO1INCH
+011C   303A               M    movlw 58   & 0xFF
+011D   00AA               M    movwf NCO1INCL
+                          M     enable_nco_output
+011E   172D               M   bsf NCO1CON, N1OE
+011F   1500               M     bsf flags, F_TONE
+                          M     if 58==PING_TONE
+0120   3006               M     movlw PING_LENGTH
+                          M     else
+                          M     movlw SCORE_LENGTH
+                          M     endif
+0121   00??               M     movwf tone_length
+0122   1106               M     bcf TRISA, AUDIO_OUT
+0123                  00436 check_x_bounds
+0123   08??           00437     movf ballx, F
+0124   1903           00438     skpnz
+0125   2???           00439     goto invert_dx
+0126   300F           00440     movlw 15
+0127   02??           00441     subwf ballx,W
+0128   1C03           00442     skpc
+0129   0008           00443     return
+012A                  00444 invert_dx
+Message[305]: Using default destination of 1 (file).
+012A   09??           00445     comf dx
+Message[305]: Using default destination of 1 (file).
+012B   0A??           00446     incf dx
+                      00447     tone PING_TONE
+                          M     set_nco_incr 58
+012C   3000               M    movlw 58>>8
+012D   00AB               M    movwf NCO1INCH
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 25
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+012E   303A               M    movlw 58   & 0xFF
+012F   00AA               M    movwf NCO1INCL
+                          M     enable_nco_output
+0130   172D               M   bsf NCO1CON, N1OE
+0131   1500               M     bsf flags, F_TONE
+                          M     if 58==PING_TONE
+0132   3006               M     movlw PING_LENGTH
+                          M     else
+                          M     movlw SCORE_LENGTH
+                          M     endif
+0133   00??               M     movwf tone_length
+0134   1106               M     bcf TRISA, AUDIO_OUT
+0135   08??           00448     movf ballx, F
+0136   1903           00449     skpnz
+0137   2???           00450     goto check_left_collision
+                      00451 ; a atteint le côté droit
+0138   08??           00452     movfw RPaddle
+0139   2???           00453     call set_dy
+013A   08??           00454     movfw RPaddle
+013B   02??           00455     subwf bally, W
+013C   1C03           00456     skpc
+013D   2???           00457     goto right_missed
+013E   3003           00458     movlw 3
+013F   07??           00459     addwf RPaddle, W
+0140   02??           00460     subwf bally, W
+0141   1803           00461     skpnc
+0142   2???           00462     goto right_missed
+0143   0008           00463     return
+0144                  00464 check_left_collision ; a atteint le côté gauche
+0144   08??           00465     movfw LPaddle
+0145   2???           00466     call set_dy
+0146   08??           00467     movfw LPaddle
+0147   02??           00468     subwf bally, W
+0148   1C03           00469     skpc
+0149   2???           00470     goto left_missed
+014A   3003           00471     movlw 3
+014B   07??           00472     addwf LPaddle, W
+014C   02??           00473     subwf bally, W
+014D   1803           00474     skpnc
+014E   2???           00475     goto left_missed
+014F   0008           00476     return
+0150                  00477 left_missed
+0150   1680           00478     bsf flags, F_SCORE
+0151   2???           00479     call player_score
+0152   0008           00480     return
+0153                  00481 right_missed
+0153   1280           00482     bcf flags, F_SCORE
+0154   2???           00483     call player_score
+0155   0008           00484     return
+                      00485 
+                      00486 ;*********************************
+                      00487 ; inc_score, incrémente le pointage
+                      00488 ; du joueur qui a gagné l'échange.
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 26
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00489 ; fait l'ajustement B.C.D. du compte.
+                      00490 ; entrée: W contient le pointeur du
+                      00491 ;         joueur qui gagné l'échange.
+                      00492 ;**********************************
+0156                  00493 inc_score
+0156   0084           00494     movwf FSR
+Message[305]: Using default destination of 1 (file).
+0157   0A80           00495     incf INDF
+0158   0800           00496     movfw INDF
+0159   390F           00497     andlw 15
+015A   3C09           00498     sublw 9
+015B   1803           00499     skpnc
+015C   0008           00500     return
+015D   30F0           00501     movlw H'F0'
+Message[305]: Using default destination of 1 (file).
+015E   0580           00502     andwf INDF
+015F   3010           00503     movlw H'10'
+Message[305]: Using default destination of 1 (file).
+0160   0780           00504     addwf INDF
+0161   30A0           00505     movlw H'A0'
+0162   0200           00506     subwf INDF,W
+0163   1903           00507     skpnz
+0164   0180           00508     clrf INDF
+0165   0008           00509     return
+                      00510 
+                      00511 ;************************************
+                      00512 ; player_score, vérifie à qui va le point
+                      00513 ; et appelle inc_score avec le pointeur
+                      00514 ; du joueur gagnant.
+                      00515 ; appel set_pause pour arrêter l'action
+                      00516 ; en attente du prochain service.
+                      00517 ;*************************************
+0166                  00518 player_score 
+0166   1200           00519     bcf flags, F_SERVE
+0167   1E80           00520     btfss flags, F_SCORE ; 0 gauche, 1 droite
+0168   2???           00521     goto left_score
+0169   1600           00522     bsf flags, F_SERVE
+016A   30??           00523     movlw RScore
+016B   2???           00524     goto $+2
+016C                  00525 left_score
+016C   30??           00526     movlw LScore
+016D   2???           00527     call inc_score
+                      00528     tone SCORE_TONE
+                          M     set_nco_incr 30
+016E   3000               M    movlw 30>>8
+016F   00AB               M    movwf NCO1INCH
+0170   301E               M    movlw 30   & 0xFF
+0171   00AA               M    movwf NCO1INCL
+                          M     enable_nco_output
+0172   172D               M   bsf NCO1CON, N1OE
+0173   1500               M     bsf flags, F_TONE
+                          M     if 30==PING_TONE
+                          M     movlw PING_LENGTH
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 27
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                          M     else
+0174   3032               M     movlw SCORE_LENGTH
+                          M     endif
+0175   00??               M     movwf tone_length
+0176   1106               M     bcf TRISA, AUDIO_OUT
+0177   2???           00529     call set_pause
+0178   0008           00530     return
+                      00531 
+                      00532 ;**************************
+                      00533 ; draw_lpaddle, dessine la
+                      00534 ; raquette de gauche
+                      00535 ;**************************
+0179                  00536 draw_lpaddle     ; dessine raquette de gauche
+0179   30??           00537     movlw disp+10
+017A   0084           00538     movwf FSR
+017B   1003           00539     clrc
+017C   0D??           00540     rlf LPaddle, W
+Message[305]: Using default destination of 1 (file).
+017D   0784           00541     addwf FSR
+017E   3080           00542     movlw 128
+017F   2???           00543     goto draw_paddle
+                      00544 
+                      00545 ;****************************
+                      00546 ; draw_rpaddle, dessine la
+                      00547 ; raquette de droite.
+                      00548 ;****************************
+0180                  00549 draw_rpaddle     ; dessine raquette de droite
+0180   30??           00550     movlw disp+11
+0181   0084           00551     movwf FSR
+0182   1003           00552     clrc
+0183   0D??           00553     rlf RPaddle, W
+Message[305]: Using default destination of 1 (file).
+0184   0784           00554     addwf FSR
+0185   3001           00555     movlw 1
+0186                  00556 draw_paddle
+Message[305]: Using default destination of 1 (file).
+0186   0480           00557     iorwf INDF
+Message[305]: Using default destination of 1 (file).
+0187   0A84           00558     incf FSR
+Message[305]: Using default destination of 1 (file).
+0188   0A84           00559     incf FSR
+Message[305]: Using default destination of 1 (file).
+0189   0480           00560     iorwf INDF
+Message[305]: Using default destination of 1 (file).
+018A   0A84           00561     incf FSR
+Message[305]: Using default destination of 1 (file).
+018B   0A84           00562     incf FSR
+Message[305]: Using default destination of 1 (file).
+018C   0480           00563     iorwf INDF
+018D   0008           00564     return
+                      00565 
+                      00566 ;****************************
+                      00567 ; draw_ball, dessine la balle
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 28
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00568 ; sur la table
+                      00569 ;****************************
+018E                  00570 draw_ball       ; 24 cycles avec appel et retour
+018E   30??           00571     movlw disp+10 ; les 10 premiers octets utilisé pour l'affichage du pointage
+018F   0084           00572     movwf FSR
+0190   1003           00573     clrc
+0191   0D??           00574     rlf bally, W  ; 2 octets par ligne, donc déplacement = y*2
+Message[305]: Using default destination of 1 (file).
+0192   0784           00575     addwf FSR
+0193   1980           00576     btfsc ballx, 3 ; si >7
+Message[305]: Using default destination of 1 (file).
+0194   0A84           00577     incf FSR       ; octet suivant
+0195   3080           00578     movlw 128      ; position de la balle dans l'octet
+0196   00??           00579     movwf temp     ; rotation jusqu'à la bonne position
+0197   08??           00580     movfw ballx
+0198   3907           00581     andlw 7        ; W= compte des rotations
+0199   1903           00582     skpnz
+019A   2???           00583     goto $+6
+019B   1003           00584     clrc
+Message[305]: Using default destination of 1 (file).
+019C   0C??           00585     rrf temp
+019D   3EFF           00586     addlw H'FF'   ; W--
+019E   1D03           00587     skpz
+019F   2???           00588     goto $-4
+01A0   08??           00589     movfw temp
+01A1   0480           00590     iorwf INDF, F
+01A2   0008           00591     return
+                      00592 
+                      00593 ;********************
+                      00594 ;clear_disp
+                      00595 ;efface l'affichage
+                      00596 ;********************
+01A3                  00597 clear_disp    ; 168 cycles avec appel et retour
+01A3   30??           00598     movlw disp
+01A4   0084           00599     movwf FSR
+01A5   302A           00600     movlw 42
+01A6   00??           00601     movwf temp
+01A7   0180           00602     clrf INDF
+Message[305]: Using default destination of 1 (file).
+01A8   0A84           00603     incf FSR
+Message[305]: Using default destination of 1 (file).
+01A9   0B??           00604     decfsz temp
+01AA   2???           00605     goto $-3
+01AB   0008           00606     return
+                      00607 
+                      00608 ;***********************
+                      00609 ; draw_table, dessine
+                      00610 ; la table en appellant
+                      00611 ; les routines pour chaque
+                      00612 ; élément la composant.
+                      00613 ;************************
+01AC                  00614 draw_table              ; 230 avec appel et retour
+01AC   2???           00615     call clear_disp     ; 168
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 29
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01AD   2???           00616     call draw_lpaddle      ; 17
+01AE   2???           00617     call draw_rpaddle      ; 17
+01AF   2???           00618     call draw_ball      ; 24
+01B0   0008           00619     return              ; 2
+                      00620 
+                      00621 ;***********************************
+                      00622 ; digit_offset, calcule la position
+                      00623 ;   position = digit * 10 / 2
+                      00624 ; dans la table 'digits' pour chaque digit
+                      00625 ; entrée: W contient le digit dans
+                      00626 ;         les 4 bits faibles
+                      00627 ; sortie: W contient le déplacement dans
+                      00628 ;         la table 'digits'
+                      00629 ; utilise temp2
+                      00630 ;***********************************
+01B1                  00631 digit_offset    
+01B1   390E           00632     andlw H'E'  
+01B2   00??           00633     movwf temp2 
+01B3   1003           00634     clrc
+01B4   0D??           00635     rlf temp2, F
+01B5   0D??           00636     rlf temp2, F
+01B6   07??           00637     addwf temp2, F
+01B7   0C??           00638     rrf temp2, W
+01B8   0008           00639     return
+                      00640 
+                      00641 ;********************************************
+                      00642 ; digit_row, affiche une ligne des 2 digits
+                      00643 ;            du pointage.
+                      00644 ; entrée: temp3, contient le pointage
+                      00645 ;         temp, contient la rangée du glyphe (0-5)
+                      00646 ; utilise temp2
+                      00647 ;********************************************
+01B9                  00648 digit_row
+01B9   0E??           00649     swapf temp3, W   ; digit dizaine
+01BA   2???           00650     call digit_offset
+01BB   07??           00651     addwf temp, W    ; ajoute déplacement pour la rangée
+01BC   2???           00652     call digits
+01BD   00??           00653     movwf temp2     ; bitmap pour cette rangée
+01BE   1A00           00654     btfsc temp3, 4  ; si digit pair prend les 4 bits forts
+01BF   0E??           00655     swapf temp2, W  ; si impair prend les 4 bits faibles.
+01C0   39F0           00656     andlw H'F0'
+Message[305]: Using default destination of 1 (file).
+01C1   0480           00657     iorwf INDF
+01C2                  00658 digit2  ; digit unités
+01C2   08??           00659     movfw temp3
+01C3   2???           00660     call digit_offset
+01C4   07??           00661     addwf temp, W
+01C5   2???           00662     call digits
+01C6   00??           00663     movwf temp2
+01C7   1C00           00664     btfss temp3, 0
+01C8   0E??           00665     swapf temp2, W
+01C9   390F           00666     andlw H'F'
+Message[305]: Using default destination of 1 (file).
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 30
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01CA   0480           00667     iorwf INDF
+01CB   0008           00668     return
+                      00669 
+                      00670 ;***********************************
+                      00671 ; draw_score, affiche les glyphes du pointage
+                      00672 ; de chaque joueur. L'affichage se fait par
+                      00673 ; rangée, i.e. la première rangée des 4 glyphes
+                      00674 ; est affichée ensuite la 2ième, etc.
+                      00675 ; utilse: temp comme compteur de rangée
+                      00676 ;         temp3 contient le pointage
+                      00677 ;         FSR pointe la mémoire vidéo 'disp'
+                      00678 ;************************************
+01CC                  00679 draw_score
+01CC   30??           00680     movlw disp
+01CD   0084           00681     movwf FSR
+01CE   01??           00682     clrf temp  ; compteur lignes du glyphe
+01CF                  00683 next_row
+01CF   08??           00684     movfw LScore
+01D0   00??           00685     movwf temp3
+01D1   2???           00686     call digit_row
+Message[305]: Using default destination of 1 (file).
+01D2   0A84           00687     incf FSR
+01D3   08??           00688     movfw RScore
+01D4   00??           00689     movwf temp3
+01D5   2???           00690     call digit_row
+Message[305]: Using default destination of 1 (file).
+01D6   0A84           00691     incf FSR
+Message[305]: Using default destination of 1 (file).
+01D7   0A??           00692     incf temp
+01D8   3005           00693     movlw 5
+01D9   02??           00694     subwf temp,W
+01DA   1D03           00695     skpz
+01DB   2???           00696     goto next_row
+01DC   0008           00697     return
+                      00698 
+                      00699 ; initialiation du programme.
+01DD                  00700 init
+                      00701     set_clk_freq D'16'
+01DD   300F               M      movlw B'00001111'
+01DE   0590               M      andwf OSCCON, F
+                          M    if D'16' == D'31'
+                          M       exitm
+                          M    endif
+                          M    if D'16' == D'250'
+                          M       movlw B'00010000'
+                          M       iorwf OSCCON, F
+                          M       exitm
+                          M    endif
+                          M    if D'16' == D'500'
+                          M       movlw B'00100000'
+                          M       iorwf OSCCON, F
+                          M       exitm
+                          M    endif
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 31
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                          M    if D'16' == D'1'
+                          M       movlw B'00110000'
+                          M       iorwf OSCCON, F
+                          M       exitm
+                          M    endif
+                          M    if D'16' == D'2'
+                          M       movlw B'01000000'
+                          M       iorwf OSCCON, F
+                          M       exitm
+                          M    endif
+                          M    if D'16' == D'4'
+                          M       movlw B'01010000'
+                          M       iorwf OSCCON, F
+                          M       exitm
+                          M    endif
+                          M    if D'16' == D'8'
+                          M      movlw B'01100000'
+                          M      iorwf OSCCON, F
+                          M      exitm
+                          M    endif
+                          M    if D'16' == D'16'
+01DF   3070               M      movlw B'01110000'
+01E0   0490               M      iorwf OSCCON, F
+                          M    endif
+01E1   0188           00702     clrf ANSELA
+                      00703 ; zero RAM
+01E2   3040           00704     movlw MINRAM
+01E3   0084           00705     movwf FSR
+01E4   0180           00706     clrf INDF
+Message[305]: Using default destination of 1 (file).
+01E5   0A84           00707     incf FSR
+01E6   1F84           00708     btfss FSR, 7
+01E7   2???           00709     goto $-3
+                      00710 ; initialisation NCO
+                      00711     set_nco_clock NCO_CLK_INTOSC
+01E8   30FC               M   movlw 0xFC
+01E9   05AE               M   andwf NCO1CLK, F
+                          M   if NCO_CLK_INTOSC > 0
+01EA   3002               M   movlw NCO_CLK_INTOSC
+01EB   04AE               M   iorwf NCO1CLK, F
+                          M   endif
+                      00712     enable_nco
+01EC   17AD               M   bsf NCO1CON, N1EN
+                      00713 ; initialisation PWM1
+01ED   30FE           00714     movlw PWM_PERIOD
+01EE   0092           00715     movwf PR2
+01EF   1086           00716     bcf TRISA, SYNC_OUT
+                      00717     set_pwm_polarity  PWM_CH2, PWM_POL_L
+                          M   if PWM_CH2 == PWM_CH1
+                          M   if PWM_POL_L==PWM_POL_H
+                          M     bcf PWM1CON, PWM1POL
+                          M   else
+                          M     bsf PWM1CON, PWM1POL
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 32
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                          M    endif
+                          M   else
+                          M   if PWM_POL_L==PWM_POL_H
+                          M     bcf PWM2CON, PWM2POL
+                          M   else
+01F0   1619               M     bsf PWM2CON, PWM2POL
+                          M    endif
+                          M   endif
+                      00718     enable_pwm_output PWM_CH2
+                          M   if PWM_CH2 == PWM_CH1
+                          M     bsf PWM1CON, PWM1OE
+                          M   else
+01F1   1719               M     bsf PWM2CON, PWM2OE
+                          M   endif
+                      00719     enable_pwm_channel PWM_CH2
+                          M    if PWM_CH2 == PWM_CH1
+                          M      bsf PWM1CON, PWM1EN
+                          M    else
+01F2   1799               M      bsf PWM2CON, PWM2EN
+                          M    endif
+                      00720     enable_tmr2_int
+01F3   148D               M     bsf PIE1, TMR2IE
+                      00721     enable_periph_int
+01F4   170B               M    bsf INTCON, PEIE
+01F5   2???           00722     call set_pause
+01F6   1513           00723     bsf T2CON, TMR2ON
+                      00724     enable_interrupt
+01F7   178B               M    bsf INTCON, GIE
+                      00725 
+                      00726 ; il ne se passe rien dans la procédure
+                      00727 ; principale car tout est fait pendant
+                      00728 ; l'interruption du TIMER2
+01F8                  00729 main
+01F8   2???           00730     goto main 
+3E26                  00731     end
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ADCON                             0000001F
+ADCS0                             00000005
+ADCS1                             00000006
+ADCS2                             00000007
+ADC_CLK_FOSCDIV16                 00000005
+ADC_CLK_FOSCDIV2                  00000000
+ADC_CLK_FOSCDIV32                 00000002
+ADC_CLK_FOSCDIV4                  00000004
+ADC_CLK_FOSCDIV64                 00000006
+ADC_CLK_FOSCDIV8                  00000001
+ADC_CLK_FRC                       00000003
+ADC_CLK_FRC2                      00000007
+ADC_INT                           0000000E
+ADFVR0                            00000000
+ADFVR1                            00000001
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADRES                             0000001E
+ANSA0                             00000000
+ANSA1                             00000001
+ANSA2                             00000002
+ANSELA                            00000008
+AUDIO_OUT                         RA2
+BALL_DLY                          7
+BANKS                             00000001
+BORCON                            0000003F
+BORFS                             00000006
+BORRDY                            00000000
+BTN_DLY                           12
+C                                 00000000
+CFGS                              00000006
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CH_AN0                            00000000
+CH_AN1                            00000004
+CH_AN2                            00000008
+CH_FVR                            0000001C
+CH_TEMP                           00000018
+CLC1CON                           00000031
+CLC1GLS0                          00000035
+CLC1GLS1                          00000036
+CLC1GLS2                          00000037
+CLC1GLS3                          00000038
+CLC1IE                            00000003
+CLC1IF                            00000003
+CLC1POL                           00000034
+CLC1SEL0                          00000032
+CLC1SEL1                          00000033
+CLC1_INT                          0000000B
+CLKRCON                           00000026
+CLKROE                            00000006
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CWG1CON0                          00000039
+CWG1CON1                          0000003A
+CWG1CON2                          0000003B
+CWG1DBF                           0000003D
+CWG1DBF0                          00000000
+CWG1DBF1                          00000001
+CWG1DBF2                          00000002
+CWG1DBF3                          00000003
+CWG1DBF4                          00000004
+CWG1DBF5                          00000005
+CWG1DBR                           0000003C
+CWG1DBR0                          00000000
+CWG1DBR1                          00000001
+CWG1DBR2                          00000002
+CWG1DBR3                          00000003
+CWG1DBR4                          00000004
+CWG1DBR5                          00000005
+CWG_INP_CLC                       00000003
+CWG_INP_NCO                       00000002
+CWG_INP_PWM1                      00000000
+CWG_INP_PWM2                      00000001
+CWG_OUTA                          00000005
+CWG_OUTB                          00000006
+D1N                               00000000
+D1S0                              00000000
+D1S1                              00000001
+D1S2                              00000002
+D1T                               00000001
+D2N                               00000002
+D2S0                              00000004
+D2S1                              00000005
+D2S2                              00000006
+D2T                               00000003
+D3N                               00000004
+D3S0                              00000000
+D3S1                              00000001
+D3S2                              00000002
+D3T                               00000005
+D4N                               00000006
+D4S0                              00000004
+D4S1                              00000005
+D4S2                              00000006
+D4T                               00000007
+DC                                00000001
+DOWN_BTN                          RA2
+EXT_INT                           00000001
+F                                 00000001
+FREE                              00000004
+FSR                               00000004
+FVRCON                            0000001D
+FVREN                             00000007
+FVRRDY                            00000006
+FVR_0V                            00000000
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 35
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+FVR_1V                            00000001
+FVR_2V                            00000002
+FVR_4V                            00000003
+F_BIT9                            0
+F_LMOVED                          7
+F_PAUSE                           3
+F_RMOVED                          6
+F_SCORE                           5
+F_SERVE                           4
+F_TONE                            2
+F_VIDEO                           1
+G1ARSEN                           00000006
+G1ASDLA0                          00000004
+G1ASDLA1                          00000005
+G1ASDLB0                          00000006
+G1ASDLB1                          00000007
+G1ASDSCLC1                        00000001
+G1ASDSFLT                         00000000
+G1ASE                             00000007
+G1CS0                             00000000
+G1EN                              00000007
+G1IS0                             00000000
+G1IS1                             00000001
+G1OEA                             00000005
+G1OEB                             00000006
+G1POL                             00000000
+G1POLA                            00000003
+G1POLB                            00000004
+G2POL                             00000001
+G3POL                             00000002
+G4D1N                             00000000
+G4D1T                             00000001
+G4D2N                             00000002
+G4D2T                             00000003
+G4D3N                             00000004
+G4D3T                             00000005
+G4D4N                             00000006
+G4D4T                             00000007
+G4POL                             00000003
+GIE                               00000007
+GO_NOT_DONE                       00000001
+HFIOFR                            00000003
+HFIOFS                            00000000
+INDF                              00000000
+INP                               00000001
+INP_MODE_AN                       00000001
+INP_MODE_DIG                      00000000
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IOCAF                             0000001C
+IOCAF0                            00000000
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+IOCAF1                            00000001
+IOCAF2                            00000002
+IOCAF3                            00000003
+IOCAN                             0000001B
+IOCAN0                            00000000
+IOCAN1                            00000001
+IOCAN2                            00000002
+IOCAN3                            00000003
+IOCAP                             0000001A
+IOCAP0                            00000000
+IOCAP1                            00000001
+IOCAP2                            00000002
+IOCAP3                            00000003
+IOCIE                             00000003
+IOCIF                             00000000
+IOC_BOTH                          00000002
+IOC_FALLING                       00000001
+IOC_INT                           00000000
+IOC_RISING                        00000000
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRP                               00000007
+LATA                              00000007
+LATA0                             00000000
+LATA1                             00000001
+LATA2                             00000002
+LC1D1S0                           00000000
+LC1D1S1                           00000001
+LC1D1S2                           00000002
+LC1D2S0                           00000004
+LC1D2S1                           00000005
+LC1D2S2                           00000006
+LC1D3S0                           00000000
+LC1D3S1                           00000001
+LC1D3S2                           00000002
+LC1D4S0                           00000004
+LC1D4S1                           00000005
+LC1D4S2                           00000006
+LC1EN                             00000007
+LC1G1D1N                          00000000
+LC1G1D1T                          00000001
+LC1G1D2N                          00000002
+LC1G1D2T                          00000003
+LC1G1D3N                          00000004
+LC1G1D3T                          00000005
+LC1G1D4N                          00000006
+LC1G1D4T                          00000007
+LC1G1POL                          00000000
+LC1G2D1N                          00000000
+LC1G2D1T                          00000001
+LC1G2D2N                          00000002
+LC1G2D2T                          00000003
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 37
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+LC1G2D3N                          00000004
+LC1G2D3T                          00000005
+LC1G2D4N                          00000006
+LC1G2D4T                          00000007
+LC1G2POL                          00000001
+LC1G3D1N                          00000000
+LC1G3D1T                          00000001
+LC1G3D2N                          00000002
+LC1G3D2T                          00000003
+LC1G3D3N                          00000004
+LC1G3D3T                          00000005
+LC1G3D4N                          00000006
+LC1G3D4T                          00000007
+LC1G3POL                          00000002
+LC1G4D1N                          00000000
+LC1G4D1T                          00000001
+LC1G4D2N                          00000002
+LC1G4D2T                          00000003
+LC1G4D3N                          00000004
+LC1G4D3T                          00000005
+LC1G4D4N                          00000006
+LC1G4D4T                          00000007
+LC1G4POL                          00000003
+LC1INTN                           00000003
+LC1INTP                           00000004
+LC1MODE0                          00000000
+LC1MODE1                          00000001
+LC1MODE2                          00000002
+LC1OE                             00000006
+LC1OUT                            00000005
+LC1POL                            00000007
+LCEN                              00000007
+LCINTN                            00000003
+LCINTP                            00000004
+LCMODE0                           00000000
+LCMODE1                           00000001
+LCMODE2                           00000002
+LCOE                              00000006
+LCOUT                             00000005
+LFIOFR                            00000001
+LPaddle                           00000075
+LScore                            0000006A
+LWLO                              00000005
+MAXFLASH                          00000200
+MAXRAM                            0000007F
+MINRAM                            00000040
+N1CKS0                            00000000
+N1CKS1                            00000001
+N1EN                              00000007
+N1OE                              00000006
+N1OUT                             00000005
+N1PFM                             00000000
+N1POL                             00000004
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 38
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+N1PWS0                            00000005
+N1PWS1                            00000006
+N1PWS2                            00000007
+NCO1ACC                           00000027
+NCO1ACC0                          00000000
+NCO1ACC1                          00000001
+NCO1ACC10                         00000002
+NCO1ACC11                         00000003
+NCO1ACC12                         00000004
+NCO1ACC13                         00000005
+NCO1ACC14                         00000006
+NCO1ACC15                         00000007
+NCO1ACC16                         00000000
+NCO1ACC17                         00000001
+NCO1ACC18                         00000002
+NCO1ACC19                         00000003
+NCO1ACC2                          00000002
+NCO1ACC3                          00000003
+NCO1ACC4                          00000004
+NCO1ACC5                          00000005
+NCO1ACC6                          00000006
+NCO1ACC7                          00000007
+NCO1ACC8                          00000000
+NCO1ACC9                          00000001
+NCO1ACCH                          00000028
+NCO1ACCL                          00000027
+NCO1ACCU                          00000029
+NCO1CLK                           0000002E
+NCO1CON                           0000002D
+NCO1IE                            00000004
+NCO1IF                            00000004
+NCO1INC                           0000002A
+NCO1INC0                          00000000
+NCO1INC1                          00000001
+NCO1INC10                         00000002
+NCO1INC11                         00000003
+NCO1INC12                         00000004
+NCO1INC13                         00000005
+NCO1INC14                         00000006
+NCO1INC15                         00000007
+NCO1INC2                          00000002
+NCO1INC3                          00000003
+NCO1INC4                          00000004
+NCO1INC5                          00000005
+NCO1INC6                          00000006
+NCO1INC7                          00000007
+NCO1INC8                          00000000
+NCO1INC9                          00000001
+NCO1INCH                          0000002B
+NCO1INCL                          0000002A
+NCO1INCU                          0000002C
+NCO1_INT                          0000000C
+NCO_CLK_FOSC                      00000001
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 39
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+NCO_CLK_INTOSC                    00000002
+NCO_CLK_LC1OUT                    00000003
+NCO_CLK_NCO1CLK                   00000000
+NCO_MODE_PULSE                    00000001
+NCO_MODE_SQUARE_WAVE              00000000
+NCO_POL_HIGH                      00000001
+NCO_POL_LOW                       00000000
+NOT_BOR                           00000000
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_TO                            00000004
+NOT_WPUEN                         00000007
+OPTION_REG                        0000000E
+OSCCON                            00000010
+OUT                               00000000
+PAGES                             00000002
+PCL                               00000002
+PCLATH                            0000000A
+PCLH0                             00000000
+PCON                              0000000F
+PEIE                              00000006
+PIE1                              0000000D
+PING_LENGTH                       6
+PING_TONE                         58
+PIR1                              0000000C
+PMADR                             00000020
+PMADR8                            00000000
+PMADRH                            00000021
+PMADRL                            00000020
+PMCON1                            00000024
+PMCON2                            00000025
+PMDAT                             00000022
+PMDATH                            00000023
+PMDATL                            00000022
+POL                               00000007
+PORTA                             00000005
+PR2                               00000012
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+PWM1CON                           00000016
+PWM1CON0                          00000016
+PWM1DCH                           00000015
+PWM1DCH0                          00000000
+PWM1DCH1                          00000001
+PWM1DCH2                          00000002
+PWM1DCH3                          00000003
+PWM1DCH4                          00000004
+PWM1DCH5                          00000005
+PWM1DCH6                          00000006
+PWM1DCH7                          00000007
+PWM1DCL                           00000014
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 40
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM1DCL0                          00000006
+PWM1DCL1                          00000007
+PWM1EN                            00000007
+PWM1OE                            00000006
+PWM1OUT                           00000005
+PWM1POL                           00000004
+PWM2CON                           00000019
+PWM2CON0                          00000019
+PWM2DCH                           00000018
+PWM2DCH0                          00000000
+PWM2DCH1                          00000001
+PWM2DCH2                          00000002
+PWM2DCH3                          00000003
+PWM2DCH4                          00000004
+PWM2DCH5                          00000005
+PWM2DCH6                          00000006
+PWM2DCH7                          00000007
+PWM2DCL                           00000017
+PWM2DCL0                          00000006
+PWM2DCL1                          00000007
+PWM2EN                            00000007
+PWM2OE                            00000006
+PWM2OUT                           00000005
+PWM2POL                           00000004
+PWM_CH1                           00000001
+PWM_CH2                           00000002
+PWM_PERIOD                        254
+PWM_POL_H                         00000000
+PWM_POL_L                         00000001
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RD                                00000000
+ROWSIZE                           00000010
+RP0                               00000005
+RP1                               00000006
+RPaddle                           00000076
+RScore                            0000006B
+SBOREN                            00000007
+SCORE_LENGTH                      50
+SCORE_TONE                        30
+STATUS                            00000003
+SWDTEN                            00000000
+SYNC_OUT                          RA1
+SYNC_WIDTH                        75
+T0CS                              00000005
+T0SE                              00000004
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000013
+TEMP_RANGE_HIGH                   00000001
+TEMP_RANGE_LOW                    00000000
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 41
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR0_DIV128                       00000006
+TMR0_DIV16                        00000003
+TMR0_DIV2                         00000000
+TMR0_DIV256                       00000007
+TMR0_DIV32                        00000004
+TMR0_DIV4                         00000001
+TMR0_DIV64                        00000005
+TMR0_DIV8                         00000002
+TMR0_EXT_CLK                      00000001
+TMR0_FOSC4                        00000000
+TMR0_INT                          00000002
+TMR2                              00000011
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TMR2_DIV1                         00000000
+TMR2_DIV16                        00000002
+TMR2_DIV4                         00000001
+TMR2_DIV64                        00000003
+TMR2_INT                          00000009
+TMR2_PS1                          00000000
+TMR2_PS10                         00000009
+TMR2_PS11                         0000000A
+TMR2_PS12                         0000000B
+TMR2_PS13                         0000000C
+TMR2_PS14                         0000000D
+TMR2_PS15                         0000000E
+TMR2_PS16                         0000000F
+TMR2_PS2                          00000001
+TMR2_PS3                          00000002
+TMR2_PS4                          00000003
+TMR2_PS5                          00000004
+TMR2_PS6                          00000005
+TMR2_PS7                          00000006
+TMR2_PS8                          00000007
+TMR2_PS9                          00000008
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000006
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TSEN                              00000005
+TSRNG                             00000004
+UP_BTN                            RA3
+VIDEO_OUT                         RA0
+VREGCON                           0000003E
+VREGPM0                           00000000
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 42
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+VREGPM1                           00000001
+W                                 00000000
+WDTCON                            00000030
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WDTPS4                            00000005
+WPUA                              00000009
+WPUA0                             00000000
+WPUA1                             00000001
+WPUA2                             00000002
+WPUA3                             00000003
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+Z                                 00000002
+_.org_1_000B                      0000000B
+_.org_1_003F                      0000003F
+_.org_1_0041                      00000041
+_.org_1_0056                      00000056
+_.org_1_0057                      00000057
+_.org_1_005D                      0000005D
+_.org_1_0083                      00000083
+_.org_1_00AA                      000000AA
+_.org_1_00CF                      000000CF
+_.org_1_00D6                      000000D6
+_.org_1_00DC                      000000DC
+_.org_1_00E0                      000000E0
+_.org_1_00E4                      000000E4
+_.org_1_00E8                      000000E8
+_.org_1_016B                      0000016B
+_.org_1_019A                      0000019A
+_.org_1_019F                      0000019F
+_.org_1_01AA                      000001AA
+_.org_1_01E7                      000001E7
+_BOREN_NSLEEP                     00003FFD
+_BOREN_OFF                        00003FF9
+_BOREN_ON                         00003FFF
+_BOREN_SBODEN                     00003FFB
+_BORV_24                          00003FFF
+_BORV_27                          00003BFF
+_BORV_HI                          00003BFF
+_BORV_LO                          00003FFF
+_CONFIG                           00002007
+_CP_OFF                           00003FFF
+_CP_ON                            00003F7F
+_DEVID1                           00002006
+_FOSC_EC                          00003FFF
+_FOSC_INTOSC                      00003FFE
+_IDLOC0                           00002000
+_IDLOC1                           00002001
+_IDLOC2                           00002002
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 43
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_IDLOC3                           00002003
+_LPBOR_OFF                        00003DFF
+_LPBOR_ON                         00003FFF
+_LVP_OFF                          00003EFF
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FBF
+_MCLRE_ON                         00003FFF
+_MCLRE_REALLY_OFF                 ( _MCLRE_OFF & _LVP_OFF )
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FDF
+_WDTE_NSLEEP                      00003FF7
+_WDTE_OFF                         00003FE7
+_WDTE_ON                          00003FFF
+_WDTE_SWDTEN                      00003FEF
+_WRT_ALL                          000027FF
+_WRT_BOOT                         000037FF
+_WRT_HALF                         00002FFF
+_WRT_OFF                          00003FFF
+__10LF322                         00000001
+ball_control                      00000109
+ball_speed                        00000072
+ballx                             0000006E
+bally                             0000006F
+basic_setup                       
+bound_paddle                      000000BE
+bra_adc_int                       
+bra_clc1_int                      
+bra_ext_int                       
+bra_int                           
+bra_ioc_int                       
+bra_nco1_int                      
+bra_tmr0_int                      
+bra_tmr2_int                      
+btn_dly                           00000074
+buttons                           000000C8
+buttons_exit                      000000EB
+check_left_collision              00000144
+check_x_bounds                    00000123
+check_y_bounds                    00000112
+clear_disp                        000001A3
+clear_ioc_flag                    
+clear_ioc_if                      
+clear_ram                         
+default_config                    __config _MCLRE_REALLY_OFF & _WDTE_SWDTEN & _FOSC_INTOSC
+delay_us                          
+digit2                            000001C2
+digit_offset                      000001B1
+digit_row                         000001B9
+digits                            00000062
+disable_adc                       
+disable_adc_int                   
+disable_clc                       
+disable_clc1_int                  
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 44
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+disable_clc_output                
+disable_clk_out                   
+disable_cwg                       
+disable_cwg_output                
+disable_ext_int                   
+disable_fvr                       
+disable_interrupt                 
+disable_ioc_int                   
+disable_nco                       
+disable_nco1_int                  
+disable_nco_output                
+disable_periph_int                
+disable_pwm_channel               
+disable_pwm_output                
+disable_temp                      
+disable_timer0_prescale           
+disable_timer2                    
+disable_tmr0_int                  
+disable_tmr2_int                  
+disp                              00000040
+disp_end                          00000052
+disp_start                        00000050
+draw_ball                         0000018E
+draw_lpaddle                      00000179
+draw_paddle                       00000186
+draw_rpaddle                      00000180
+draw_score                        000001CC
+draw_side                         00000053
+draw_table                        000001AC
+dx                                00000070
+dy                                00000071
+enable_adc                        
+enable_adc_int                    
+enable_clc                        
+enable_clc1_int                   
+enable_clc_output                 
+enable_clk_out                    
+enable_cwg                        
+enable_cwg_output                 
+enable_ext_int                    
+enable_fvr                        
+enable_interrupt                  
+enable_ioc_int                    
+enable_nco                        
+enable_nco1_int                   
+enable_nco_output                 
+enable_periph_int                 
+enable_power_save                 
+enable_pwm_channel                
+enable_pwm_output                 
+enable_temp                       
+enable_timer2                     
+enable_tmr0_int                   
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 45
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+enable_tmr2_int                   
+flags                             0000006C
+inc_score                         00000156
+init                              000001DD
+init_timer0                       
+init_timer2                       
+init_timer2_period                
+invert_dx                         0000012A
+invert_dy                         00000118
+isr_exit                          00000060
+isr_vector                        00000004
+left_missed                       00000150
+left_score                        0000016C
+ln_cnt                            0000006D
+main                              000001F8
+move_ball                         0000002B
+next_row                          000001CF
+pixel_loop                        00000094
+player_score                      00000166
+read_adc                          
+read_buttons                      00000025
+read_prog_mem                     
+right_missed                      00000153
+rst_vector                        00000000
+select_adc_channel                
+select_adc_clk                    
+select_cwg_input                  
+set_clk_freq                      
+set_dy                            000000FD
+set_fvr_volt                      
+set_inp_mode                      
+set_io_dir                        
+set_ioc_edge                      
+set_nco_clock                     
+set_nco_incr                      
+set_nco_mode                      
+set_nco_output_polarity           
+set_nco_pulse_width               
+set_pause                         000000AE
+set_pwm_duty_cycle                
+set_pwm_polarity                  
+set_temp_range                    
+set_timer0_clock                  
+set_timer0_prescale               
+set_timer2_postscale              
+set_timer2_prescale               
+start_adc                         
+sync_end                          00000049
+sync_start                        00000034
+temp                              00000077
+temp2                             00000078
+temp3                             00000079
+test_left_moved                   000000FA
+MPASM  5.50                     MINI-PONG.ASM   8-17-2013  7:51:58         PAGE 46
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+tone                              
+tone_length                       00000073
+update_score                      0000004E
+video                             0000007C
+video_exit                        000000A7
+video_output                      0000002E
+wait_count                        
+wait_hfosc_stable                 
+wait_lfosc_ready                  
+wait_timer0_rollover              
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :    41 reported,     0 suppressed
+
+
