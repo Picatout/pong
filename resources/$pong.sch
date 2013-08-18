@@ -1,4 +1,4 @@
-EESchema Schematic File Version 2  date 2013-08-17 23:34:59
+EESchema Schematic File Version 2  date 2013-08-17 23:49:45
 LIBS:power
 LIBS:device
 LIBS:transistors
@@ -251,63 +251,14 @@ F 3 "" H 3250 2950 60  0000 C CNN
 	1    3250 2950
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	4700 4250 4700 5100
-Wire Wire Line
-	5600 5300 5600 5450
-Wire Wire Line
-	4700 5600 4700 5950
-Wire Wire Line
-	4700 5950 5600 5950
-Wire Wire Line
-	4350 6450 4350 6550
-Wire Wire Line
-	3000 3900 3300 3900
-Wire Wire Line
-	6300 3500 6500 3500
-Wire Wire Line
-	6500 3500 6500 3700
-Wire Wire Line
-	3000 4400 3000 4500
-Connection ~ 2650 4400
-Wire Wire Line
-	4500 3500 4700 3500
-Wire Wire Line
-	1550 2250 1700 2250
-Wire Wire Line
-	2700 2000 2700 2350
-Connection ~ 2700 2250
-Wire Wire Line
-	2700 2250 3250 2250
-Wire Wire Line
-	3250 2250 3250 2350
-Wire Wire Line
-	3250 2750 3250 2950
-Wire Wire Line
-	2700 2750 2700 2950
-Wire Wire Line
-	1550 2850 1550 3000
-Wire Wire Line
-	5600 4900 5600 4800
-Connection ~ 5600 4800
-Connection ~ 4700 4600
 Text Notes 6500 4250 2    60   ~ 0
 video
 Text Notes 4850 4150 2    60   ~ 0
 sync
 Text Notes 6700 2500 2    197  ~ 0
 pong game
-Wire Wire Line
-	6300 4300 6300 5550
 Text GLabel 4000 3650 1    60   Input ~ 0
 RA2
-Wire Wire Line
-	4000 3900 4000 3650
-Connection ~ 4000 3900
-Wire Wire Line
-	3800 3900 4700 3900
-Connection ~ 3000 4400
-Connection ~ 3250 3900
 $Comp
 L NPN Q1
 U 1 1 520CE5EC
@@ -352,19 +303,8 @@ F 3 "" H 7050 4900 60  0000 C CNN
 	1    7050 4900
 	0    -1   -1   0   
 $EndComp
-Wire Wire Line
-	7700 5100 7700 5200
-Wire Wire Line
-	7300 4900 7400 4900
-Wire Wire Line
-	7700 4600 7700 4700
-Connection ~ 7700 4650
-Wire Wire Line
-	6300 4900 6800 4900
 Text GLabel 7700 4000 1    60   Input ~ 0
 Vdd
-Wire Wire Line
-	7700 4100 7700 4000
 $Comp
 L SW_PUSH_SMALL SW2
 U 1 1 520CE8AB
@@ -409,15 +349,6 @@ F 3 "" H 9600 4050 60  0000 C CNN
 	1    9600 4050
 	-1   0    0    -1  
 $EndComp
-Wire Wire Line
-	8950 4150 8950 5550
-Wire Wire Line
-	8800 4150 9500 4150
-Wire Wire Line
-	8400 4150 8000 4150
-Wire Wire Line
-	8000 4150 8000 4650
-Connection ~ 8000 4650
 $Comp
 L R R8
 U 1 1 520CE9E9
@@ -440,14 +371,8 @@ F 3 "" H 9700 3600 60  0000 C CNN
 	1    9700 3600
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	8200 3150 8200 3950
-Wire Wire Line
-	9150 3150 9150 3950
 Text GLabel 7950 3350 0    60   Input ~ 0
 RA2
-Wire Wire Line
-	7950 3350 9700 3350
 $Comp
 L R R3
 U 1 1 520CEC80
@@ -459,8 +384,6 @@ F 3 "" H 3800 3550 60  0000 C CNN
 	1    3800 3550
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	3800 3900 3800 3800
 $Comp
 L R R10
 U 1 1 520CF394
@@ -472,24 +395,101 @@ F 3 "" H 8800 3650 60  0000 C CNN
 	1    8800 3650
 	1    0    0    -1  
 $EndComp
+Text GLabel 8800 2800 1    60   Input ~ 0
+Vdd
+Text GLabel 3800 3150 1    60   Input ~ 0
+Vdd
+Text Notes 7500 7550 0    60   ~ 0
+pong game\n
+Wire Wire Line
+	4700 4250 4700 5100
+Wire Wire Line
+	5600 5300 5600 5450
+Wire Wire Line
+	4700 5600 4700 5950
+Wire Wire Line
+	4700 5950 5600 5950
+Wire Wire Line
+	4350 6450 4350 6550
+Wire Wire Line
+	3000 3900 3300 3900
+Wire Wire Line
+	6300 3500 6500 3500
+Wire Wire Line
+	6500 3500 6500 3700
+Wire Wire Line
+	3000 4400 3000 4500
+Connection ~ 2650 4400
+Wire Wire Line
+	4500 3500 4700 3500
+Wire Wire Line
+	1550 2250 1700 2250
+Wire Wire Line
+	2700 2000 2700 2350
+Connection ~ 2700 2250
+Wire Wire Line
+	2700 2250 3250 2250
+Wire Wire Line
+	3250 2250 3250 2350
+Wire Wire Line
+	3250 2750 3250 2950
+Wire Wire Line
+	2700 2750 2700 2950
+Wire Wire Line
+	1550 2850 1550 3000
+Wire Wire Line
+	5600 4900 5600 4800
+Connection ~ 5600 4800
+Connection ~ 4700 4600
+Wire Wire Line
+	6300 4300 6300 4900
+Wire Wire Line
+	4000 3900 4000 3650
+Connection ~ 4000 3900
+Wire Wire Line
+	3800 3900 4700 3900
+Connection ~ 3000 4400
+Connection ~ 3250 3900
+Wire Wire Line
+	7700 5100 7700 5200
+Wire Wire Line
+	7300 4900 7400 4900
+Wire Wire Line
+	7700 4600 7700 4700
+Connection ~ 7700 4650
+Wire Wire Line
+	6300 4900 6800 4900
+Wire Wire Line
+	7700 4100 7700 4000
+Wire Wire Line
+	8950 4700 8950 4150
+Wire Wire Line
+	8800 4150 9500 4150
+Wire Wire Line
+	8400 4150 8000 4150
+Wire Wire Line
+	8000 4150 8000 4650
+Connection ~ 8000 4650
+Wire Wire Line
+	8200 3150 8200 3950
+Wire Wire Line
+	9150 3150 9150 3950
+Wire Wire Line
+	7950 3350 9700 3350
+Wire Wire Line
+	3800 3900 3800 3800
 Wire Wire Line
 	8800 3900 8800 4150
 Connection ~ 8950 4150
-Text GLabel 8800 2800 1    60   Input ~ 0
-Vdd
 Wire Wire Line
 	8800 2800 8800 3400
 Wire Wire Line
 	2650 4400 3000 4400
-Text GLabel 3800 3150 1    60   Input ~ 0
-Vdd
 Wire Wire Line
 	3800 3300 3800 3150
 Wire Wire Line
 	5600 4800 6300 4800
 Connection ~ 6300 4800
-Text Notes 7500 7550 0    60   ~ 0
-pong game\n
 Wire Wire Line
 	6300 3150 9150 3150
 Connection ~ 8200 3150
@@ -498,8 +498,44 @@ Wire Wire Line
 Wire Wire Line
 	9700 3850 9700 3950
 Wire Wire Line
-	8000 4650 7700 4650
+	8100 4650 7700 4650
 Wire Wire Line
-	8950 5550 6300 5550
-Connection ~ 6300 4900
+	8100 4900 8100 4650
+Wire Wire Line
+	8600 4900 8650 4900
+$Comp
+L R R9
+U 1 1 520CE635
+P 8350 4900
+F 0 "R9" V 8430 4900 50  0000 C CNN
+F 1 "10k" V 8350 4900 50  0000 C CNN
+F 2 "" H 8350 4900 60  0000 C CNN
+F 3 "" H 8350 4900 60  0000 C CNN
+	1    8350 4900
+	0    -1   -1   0   
+$EndComp
+$Comp
+L GND #PWR8
+U 1 1 520CE604
+P 8950 5200
+F 0 "#PWR8" H 8950 5200 30  0001 C CNN
+F 1 "GND" H 8950 5130 30  0001 C CNN
+F 2 "" H 8950 5200 60  0000 C CNN
+F 3 "" H 8950 5200 60  0000 C CNN
+	1    8950 5200
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8950 5100 8950 5200
+$Comp
+L NPN Q2
+U 1 1 520CE5F4
+P 8850 4900
+F 0 "Q2" H 8850 4750 50  0000 R CNN
+F 1 "2N3904" H 8850 5050 50  0000 R CNN
+F 2 "" H 8850 4900 60  0000 C CNN
+F 3 "" H 8850 4900 60  0000 C CNN
+	1    8850 4900
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC

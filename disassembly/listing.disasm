@@ -1,7 +1,7 @@
 Disassembly Listing for mini-pong
 Generated From:
 C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.X.production.cof
-2013-08-17 07:51:59
+2013-08-17 23:49:09
 
 ---  C:/Users/Jacques/Documents/GitHub/mini-pong.X/mini-pong.asm  ---------------------------------------
                                                   1:     ; NOM: mini-pong
@@ -28,7 +28,7 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
                                                   22:    ; DATE: 2013-08-10
                                                   23:    
                                                   24:        include <p10f322.inc>
-                                                  25:        include "c:\microchip\include\pic10f322_m.inc"
+                                                  25:        include "include\pic10f322_m.inc"
                                                   26:        radix dec
                                                   27:    
                                                   28:        __config _FOSC_INTOSC & _MCLRE_OFF & _LVP_OFF & _WDTE_OFF & _CP_ON

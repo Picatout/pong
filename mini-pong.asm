@@ -22,7 +22,7 @@
 ; DATE: 2013-08-10
 
     include <p10f322.inc>
-    include "c:\microchip\include\pic10f322_m.inc"
+    include "include\pic10f322_m.inc"
     radix dec
 
     __config _FOSC_INTOSC & _MCLRE_OFF & _LVP_OFF & _WDTE_OFF & _CP_ON
