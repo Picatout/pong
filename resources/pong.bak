@@ -1,4 +1,4 @@
-EESchema Schematic File Version 2  date 2013-08-16 22:55:59
+EESchema Schematic File Version 2  date 2013-08-17 23:34:59
 LIBS:power
 LIBS:device
 LIBS:transistors
@@ -37,7 +37,7 @@ $Descr A4 11693 8268
 encoding utf-8
 Sheet 1 1
 Title ""
-Date "17 aug 2013"
+Date "18 aug 2013"
 Rev ""
 Comp ""
 Comment1 ""
@@ -298,7 +298,7 @@ sync
 Text Notes 6700 2500 2    197  ~ 0
 pong game
 Wire Wire Line
-	6300 4300 6300 4900
+	6300 4300 6300 5550
 Text GLabel 4000 3650 1    60   Input ~ 0
 RA2
 Wire Wire Line
@@ -320,17 +320,6 @@ F 3 "" H 7600 4900 60  0000 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L NPN Q2
-U 1 1 520CE5F4
-P 8850 4900
-F 0 "Q2" H 8850 4750 50  0000 R CNN
-F 1 "2N3904" H 8850 5050 50  0000 R CNN
-F 2 "" H 8850 4900 60  0000 C CNN
-F 3 "" H 8850 4900 60  0000 C CNN
-	1    8850 4900
-	1    0    0    -1  
-$EndComp
-$Comp
 L GND #PWR7
 U 1 1 520CE5FE
 P 7700 5200
@@ -339,17 +328,6 @@ F 1 "GND" H 7700 5130 30  0001 C CNN
 F 2 "" H 7700 5200 60  0000 C CNN
 F 3 "" H 7700 5200 60  0000 C CNN
 	1    7700 5200
-	1    0    0    -1  
-$EndComp
-$Comp
-L GND #PWR8
-U 1 1 520CE604
-P 8950 5200
-F 0 "#PWR8" H 8950 5200 30  0001 C CNN
-F 1 "GND" H 8950 5130 30  0001 C CNN
-F 2 "" H 8950 5200 60  0000 C CNN
-F 3 "" H 8950 5200 60  0000 C CNN
-	1    8950 5200
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -364,17 +342,6 @@ F 3 "" H 7700 4350 60  0000 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L R R9
-U 1 1 520CE635
-P 8350 4900
-F 0 "R9" V 8430 4900 50  0000 C CNN
-F 1 "10k" V 8350 4900 50  0000 C CNN
-F 2 "" H 8350 4900 60  0000 C CNN
-F 3 "" H 8350 4900 60  0000 C CNN
-	1    8350 4900
-	0    -1   -1   0   
-$EndComp
-$Comp
 L R R6
 U 1 1 520CE640
 P 7050 4900
@@ -386,17 +353,11 @@ F 3 "" H 7050 4900 60  0000 C CNN
 	0    -1   -1   0   
 $EndComp
 Wire Wire Line
-	8950 5100 8950 5200
-Wire Wire Line
 	7700 5100 7700 5200
 Wire Wire Line
 	7300 4900 7400 4900
 Wire Wire Line
 	7700 4600 7700 4700
-Wire Wire Line
-	8100 4900 8100 4650
-Wire Wire Line
-	8100 4650 7700 4650
 Connection ~ 7700 4650
 Wire Wire Line
 	6300 4900 6800 4900
@@ -449,7 +410,7 @@ F 3 "" H 9600 4050 60  0000 C CNN
 	-1   0    0    -1  
 $EndComp
 Wire Wire Line
-	8950 4700 8950 4150
+	8950 4150 8950 5550
 Wire Wire Line
 	8800 4150 9500 4150
 Wire Wire Line
@@ -500,8 +461,6 @@ F 3 "" H 3800 3550 60  0000 C CNN
 $EndComp
 Wire Wire Line
 	3800 3900 3800 3800
-Wire Wire Line
-	8600 4900 8650 4900
 $Comp
 L R R10
 U 1 1 520CF394
@@ -538,4 +497,9 @@ Wire Wire Line
 	8600 3850 8600 3950
 Wire Wire Line
 	9700 3850 9700 3950
+Wire Wire Line
+	8000 4650 7700 4650
+Wire Wire Line
+	8950 5550 6300 5550
+Connection ~ 6300 4900
 $EndSCHEMATC
