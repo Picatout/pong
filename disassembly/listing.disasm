@@ -1,7 +1,7 @@
 Disassembly Listing for mini-pong
 Generated From:
 C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.X.production.cof
-2013-08-17 23:49:09
+2013-08-18 12:25:57
 
 ---  C:/Users/Jacques/Documents/GitHub/mini-pong.X/mini-pong.asm  ---------------------------------------
                                                   1:     ; NOM: mini-pong
@@ -47,8 +47,8 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
                                                   41:    #define F_PAUSE 3 ; action arrêtée
                                                   42:    #define F_SERVE 4 ; qui a le service, 0 gauche, 1 droite
                                                   43:    #define F_SCORE 5 ; 0 point à gauche, 1 point à droite
-                                                  44:    #define F_RMOVED 6 ; joueur de droit a bougé sa raquette
-                                                  45:    #define F_LMOVED 7 ; joueur de gauche a bougé sa raquette
+                                                  44:    #define F_MOVED 6 ; le joueur qui a le service a bougé sa raquette
+                                                  45:    ;#define F_LMOVED 7 ; joueur de gauche a bougé sa raquette
                                                   46:    
                                                   47:    
                                                   48:    #define VIDEO_OUT RA0  ; sortie signal vidéo
@@ -57,12 +57,12 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
                                                   51:    #define DOWN_BTN RA2   ; bouton déplacement vers le bas
                                                   52:    #define UP_BTN RA3     ; vers le haut
                                                   53:    
-                                                  54:    #define BALL_DLY  7     ; détermine la vitesse de la balle
+                                                  54:    #define BALL_DLY  10     ; détermine la vitesse de la balle
                                                   55:    #define SCORE_TONE 30   ; tonalité lorsqu'un point est compté
                                                   56:    #define SCORE_LENGTH 50 ; durée de la tonalité
                                                   57:    #define PING_TONE 58    ; tonalité lorsque la balle frappe la raquette ou rebondie.
                                                   58:    #define PING_LENGTH 6   ; durée
-                                                  59:    #define BTN_DLY 12       ; détermine la vitesse des raquettes
+                                                  59:    #define BTN_DLY 14       ; détermine la vitesse des raquettes
                                                   60:    
                                                   61:    ; macros
                                                   62:    
@@ -118,7 +118,7 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
                                                   112:   rst_vector
 0000  018E     CLRF OPTION_REG                    113:       clrf OPTION_REG
 0001  1589     BSF WPUA, 0x3                      114:       bsf WPUA, RA3
-0002  29DD     GOTO 0x1DD                         115:       goto init
+0002  29E0     GOTO 0x1E0                         115:       goto init
                                                   116:   
                                                   117:       org 4
                                                   118:   isr_vector
@@ -165,7 +165,7 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
 002A  2860     GOTO 0x60                          159:       goto isr_exit
                                                   160:   move_ball
 002B  1DEC     BTFSS 0x6C, 0x3                    161:       btfss flags, F_PAUSE
-002C  2109     CALL 0x109                         162:       call ball_control
+002C  2106     CALL 0x106                         162:       call ball_control
 002D  2860     GOTO 0x60                          163:       goto isr_exit
                                                   164:   video_output
 002E  30C6     MOVLW 0xC6                         165:       movlw 198
@@ -194,7 +194,7 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
 0044  1506     BSF TRISA, 0x2                     185:       bsf TRISA, AUDIO_OUT
 0045  01ED     CLRF 0x6D                          186:       clrf ln_cnt
 0046  106C     BCF 0x6C, 0x0                      187:       bcf flags, F_BIT9
-0047  21AC     CALL 0x1AC                         188:       call draw_table
+0047  21AF     CALL 0x1AF                         188:       call draw_table
 0048  2860     GOTO 0x60                          189:       goto isr_exit
                                                   190:   sync_end
 0049  3012     MOVLW 0x12                         191:       set_pwm_duty_cycle PWM_CH2, SYNC_WIDTH
@@ -203,7 +203,7 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
 004C  0097     MOVWF PWM2DCL
 004D  2860     GOTO 0x60                          192:       goto isr_exit
                                                   193:   update_score
-004E  21CC     CALL 0x1CC                         194:       call draw_score
+004E  21CF     CALL 0x1CF                         194:       call draw_score
 004F  2860     GOTO 0x60                          195:       goto isr_exit
                                                   196:   disp_start
 0050  14EC     BSF 0x6C, 0x1                      197:       bsf flags, F_VIDEO
@@ -371,445 +371,448 @@ C:/Users/Jacques/Documents/GitHub/mini-pong.X/dist/default/production/mini-pong.
                                                   327:   ; gauche ou droite.
                                                   328:   ;*********************************
                                                   329:   buttons  
-00C8  136C     BCF 0x6C, 0x6                      330:       bcf flags, F_RMOVED
-00C9  13EC     BCF 0x6C, 0x7                      331:       bcf flags, F_LMOVED
-00CA  1005     BCF PORTA, 0x0                     332:       bcf PORTA, RA0
-00CB  1006     BCF TRISA, 0x0                     333:       bcf TRISA, RA0 ; mode sortie
-00CC  3004     MOVLW 0x4                          334:       delay_us 4
-00CD  3EFF     ADDLW 0xFF
-00CE  1D03     BTFSS STATUS, 0x2
-00CF  28CD     GOTO 0xCD
-                                                  335:       ; lecture boutons de droite
-00D0  0805     MOVF PORTA, W                      336:       movfw PORTA
-00D1  00F7     MOVWF 0x77                         337:       movwf temp
-                                                  338:       ; lecture boutons de gauche
-00D2  1405     BSF PORTA, 0x0                     339:       bsf PORTA, RA0
-00D3  3004     MOVLW 0x4                          340:       delay_us 4
-00D4  3EFF     ADDLW 0xFF
-00D5  1D03     BTFSS STATUS, 0x2
-00D6  28D4     GOTO 0xD4
-00D7  0805     MOVF PORTA, W                      341:       movfw PORTA
-00D8  00F8     MOVWF 0x78                         342:       movwf temp2
-                                                  343:       ; remet le port à l'état initial
-00D9  1406     BSF TRISA, 0x0                     344:       bsf TRISA, RA0
-00DA  1005     BCF PORTA, 0x0                     345:       bcf PORTA, RA0
-                                                  346:       ; vérification état boutons de droite.
-00DB  19F7     BTFSC 0x77, 0x3                    347:       btfsc temp, RA3
-00DC  28DF     GOTO 0xDF                          348:       goto $+3
-00DD  03F6     DECF 0x76, F                       349:       decf RPaddle
-00DE  176C     BSF 0x6C, 0x6                      350:       bsf flags, F_RMOVED
+00C8  136C     BCF 0x6C, 0x6                      330:       bcf flags, F_MOVED
+00C9  1005     BCF PORTA, 0x0                     331:       bcf PORTA, RA0
+00CA  1006     BCF TRISA, 0x0                     332:       bcf TRISA, RA0 ; mode sortie
+00CB  3004     MOVLW 0x4                          333:       delay_us 4
+00CC  3EFF     ADDLW 0xFF
+00CD  1D03     BTFSS STATUS, 0x2
+00CE  28CC     GOTO 0xCC
+                                                  334:       ; lecture boutons de droite
+00CF  0805     MOVF PORTA, W                      335:       movfw PORTA
+00D0  00F7     MOVWF 0x77                         336:       movwf temp
+                                                  337:       ; lecture boutons de gauche
+00D1  1405     BSF PORTA, 0x0                     338:       bsf PORTA, RA0
+00D2  3004     MOVLW 0x4                          339:       delay_us 4
+00D3  3EFF     ADDLW 0xFF
+00D4  1D03     BTFSS STATUS, 0x2
+00D5  28D3     GOTO 0xD3
+00D6  0805     MOVF PORTA, W                      340:       movfw PORTA
+00D7  00F8     MOVWF 0x78                         341:       movwf temp2
+                                                  342:       ; remet le port à l'état initial
+00D8  1406     BSF TRISA, 0x0                     343:       bsf TRISA, RA0
+00D9  1005     BCF PORTA, 0x0                     344:       bcf PORTA, RA0
+                                                  345:   ; lecture boutons droites
+00DA  19F7     BTFSC 0x77, 0x3                    346:       btfsc temp, RA3
+00DB  28DF     GOTO 0xDF                          347:       goto $+4
+00DC  03F6     DECF 0x76, F                       348:       decf RPaddle
+00DD  1A6C     BTFSC 0x6C, 0x4                    349:       btfsc flags, F_SERVE
+00DE  176C     BSF 0x6C, 0x6                      350:       bsf flags, F_MOVED
 00DF  1977     BTFSC 0x77, 0x2                    351:       btfsc temp, RA2
-00E0  28E3     GOTO 0xE3                          352:       goto $+3
+00E0  28E4     GOTO 0xE4                          352:       goto $+4
 00E1  0AF6     INCF 0x76, F                       353:       incf RPaddle
-00E2  176C     BSF 0x6C, 0x6                      354:       bsf flags, F_RMOVED
-                                                  355:       ; vérification état boutons de gauche
-00E3  19F8     BTFSC 0x78, 0x3                    356:       btfsc temp2, RA3
-00E4  28E7     GOTO 0xE7                          357:       goto $+3
-00E5  03F5     DECF 0x75, F                       358:       decf LPaddle
-00E6  17EC     BSF 0x6C, 0x7                      359:       bsf flags, F_LMOVED
-00E7  1978     BTFSC 0x78, 0x2                    360:       btfsc temp2, RA2
-00E8  28EB     GOTO 0xEB                          361:       goto $+3
-00E9  0AF5     INCF 0x75, F                       362:       incf LPaddle
-00EA  17EC     BSF 0x6C, 0x7                      363:       bsf flags, F_LMOVED
-                                                  364:   buttons_exit
-00EB  3076     MOVLW 0x76                         365:       movlw RPaddle
-00EC  20BE     CALL 0xBE                          366:       call bound_paddle
-00ED  3075     MOVLW 0x75                         367:       movlw LPaddle
-00EE  20BE     CALL 0xBE                          368:       call bound_paddle
-00EF  1DEC     BTFSS 0x6C, 0x3                    369:       btfss flags, F_PAUSE
-00F0  0008     RETURN                             370:       return
-00F1  30C0     MOVLW 0xC0                         371:       movlw (1<<F_RMOVED)|(1<<F_LMOVED)
-00F2  056C     ANDWF 0x6C, W                      372:       andwf flags, W
-00F3  1903     BTFSC STATUS, 0x2                  373:       skpnz
-00F4  0008     RETURN                             374:       return
-00F5  1E6C     BTFSS 0x6C, 0x4                    375:       btfss flags, F_SERVE
-00F6  28FA     GOTO 0xFA                          376:       goto test_left_moved
-00F7  1B6C     BTFSC 0x6C, 0x6                    377:       btfsc flags, F_RMOVED
-00F8  11EC     BCF 0x6C, 0x3                      378:       bcf flags, F_PAUSE
-00F9  0008     RETURN                             379:       return
-                                                  380:   test_left_moved
-00FA  1BEC     BTFSC 0x6C, 0x7                    381:       btfsc flags, F_LMOVED
-00FB  11EC     BCF 0x6C, 0x3                      382:       bcf flags, F_PAUSE
-00FC  0008     RETURN                             383:       return
-                                                  384:   
-                                                  385:   ;********************************
-                                                  386:   ; set_dy, détermine la valeur de dy
-                                                  387:   ; si la balle est passé au dessus du centre de la raquette
-                                                  388:   ; elle repart vers le haut (dy=-1)
-                                                  389:   ; si la balle frappe la raquette au centre elle
-                                                  390:   ; repart en ligne droite (dy=0)
-                                                  391:   ; si elle est au dessous du centre elle repart
-                                                  392:   ; vers le bas (dy=1)
-                                                  393:   ; entrée: W = pointeur raquette qui a reçue la balle
-                                                  394:   ;*********************************
-                                                  395:   set_dy  
-00FD  0084     MOVWF FSR                          396:       movwf FSR
-00FE  0800     MOVF INDF, W                       397:       movfw INDF
-00FF  3E01     ADDLW 0x1                          398:       addlw 1
-0100  026F     SUBWF 0x6F, W                      399:       subwf bally, W
-0101  1903     BTFSC STATUS, 0x2                  400:       skpnz
-0102  0008     RETURN                             401:       return
-0103  1803     BTFSC STATUS, 0x0                  402:       skpnc
-0104  30FF     MOVLW 0xFF                         403:       movlw -1
-0105  1C03     BTFSS STATUS, 0x0                  404:       skpc
-0106  3001     MOVLW 0x1                          405:       movlw 1
-0107  00F1     MOVWF 0x71                         406:       movwf dy
-0108  0008     RETURN                             407:       return
-                                                  408:   
-                                                  409:   ;*******************************
-                                                  410:   ; ball_control, controle le mouvement
-                                                  411:   ; de la balle en la faisant rebondir
-                                                  412:   ; sur les raquettes et sur les bords
-                                                  413:   ; haut et bas de la table.
-                                                  414:   ;*******************************
-                                                  415:   ball_control
-0109  08F2     MOVF 0x72, F                       416:       movf ball_speed, F
-010A  1D03     BTFSS STATUS, 0x2                  417:       skpz
-010B  0008     RETURN                             418:       return
-010C  3007     MOVLW 0x7                          419:       movlw BALL_DLY
-010D  00F2     MOVWF 0x72                         420:       movwf ball_speed
-010E  0870     MOVF 0x70, W                       421:       movfw dx
-010F  07EE     ADDWF 0x6E, F                      422:       addwf ballx
-0110  0871     MOVF 0x71, W                       423:       movfw dy
-0111  07EF     ADDWF 0x6F, F                      424:       addwf bally
-                                                  425:   check_y_bounds
-0112  1903     BTFSC STATUS, 0x2                  426:       skpnz
-0113  2918     GOTO 0x118                         427:       goto invert_dy
-0114  300F     MOVLW 0xF                          428:       movlw 15
-0115  026F     SUBWF 0x6F, W                      429:       subwf bally, W
-0116  1C03     BTFSS STATUS, 0x0                  430:       skpc
-0117  2923     GOTO 0x123                         431:       goto check_x_bounds
-                                                  432:   invert_dy
-0118  09F1     COMF 0x71, F                       433:       comf dy, F
-0119  0AF1     INCF 0x71, F                       434:       incf dy, F
-011A  3000     MOVLW 0x0                          435:       tone PING_TONE
-011B  00AB     MOVWF NCO1INCH
-011C  303A     MOVLW 0x3A
-011D  00AA     MOVWF NCO1INCL
-011E  172D     BSF NCO1CON, 0x6
-011F  156C     BSF flags, 0x2
-0120  3006     MOVLW 0x6
-0121  00F3     MOVWF tone_length
-0122  1106     BCF TRISA, 0x2
-                                                  436:   check_x_bounds
-0123  08EE     MOVF 0x6E, F                       437:       movf ballx, F
-0124  1903     BTFSC STATUS, 0x2                  438:       skpnz
-0125  292A     GOTO 0x12A                         439:       goto invert_dx
-0126  300F     MOVLW 0xF                          440:       movlw 15
-0127  026E     SUBWF 0x6E, W                      441:       subwf ballx,W
-0128  1C03     BTFSS STATUS, 0x0                  442:       skpc
-0129  0008     RETURN                             443:       return
-                                                  444:   invert_dx
-012A  09F0     COMF 0x70, F                       445:       comf dx
-012B  0AF0     INCF 0x70, F                       446:       incf dx
-012C  3000     MOVLW 0x0                          447:       tone PING_TONE
-012D  00AB     MOVWF NCO1INCH
-012E  303A     MOVLW 0x3A
-012F  00AA     MOVWF NCO1INCL
-0130  172D     BSF NCO1CON, 0x6
-0131  156C     BSF flags, 0x2
-0132  3006     MOVLW 0x6
-0133  00F3     MOVWF tone_length
-0134  1106     BCF TRISA, 0x2
-0135  08EE     MOVF 0x6E, F                       448:       movf ballx, F
-0136  1903     BTFSC STATUS, 0x2                  449:       skpnz
-0137  2944     GOTO 0x144                         450:       goto check_left_collision
-                                                  451:   ; a atteint le côté droit
-0138  0876     MOVF 0x76, W                       452:       movfw RPaddle
-0139  20FD     CALL 0xFD                          453:       call set_dy
-013A  0876     MOVF 0x76, W                       454:       movfw RPaddle
+00E2  1A6C     BTFSC 0x6C, 0x4                    354:       btfsc flags, F_SERVE
+00E3  176C     BSF 0x6C, 0x6                      355:       bsf flags, F_MOVED
+                                                  356:   ; lecture boutons gauches
+00E4  19F8     BTFSC 0x78, 0x3                    357:       btfsc temp2, RA3
+00E5  28E9     GOTO 0xE9                          358:       goto $+4
+00E6  03F5     DECF 0x75, F                       359:       decf LPaddle
+00E7  1E6C     BTFSS 0x6C, 0x4                    360:       btfss flags, F_SERVE
+00E8  176C     BSF 0x6C, 0x6                      361:       bsf flags, F_MOVED
+00E9  1978     BTFSC 0x78, 0x2                    362:       btfsc temp2, RA2
+00EA  28EE     GOTO 0xEE                          363:       goto $+4
+00EB  0AF5     INCF 0x75, F                       364:       incf LPaddle
+00EC  1E6C     BTFSS 0x6C, 0x4                    365:       btfss flags, F_SERVE
+00ED  176C     BSF 0x6C, 0x6                      366:       bsf flags, F_MOVED
+                                                  367:   ; libère si pause
+00EE  1F6C     BTFSS 0x6C, 0x6                    368:       btfss flags, F_MOVED
+00EF  28F5     GOTO 0xF5                          369:       goto buttons_exit
+00F0  1DEC     BTFSS 0x6C, 0x3                    370:       btfss flags, F_PAUSE
+00F1  28F5     GOTO 0xF5                          371:       goto buttons_exit
+00F2  11EC     BCF 0x6C, 0x3                      372:       bcf flags, F_PAUSE
+00F3  0870     MOVF 0x70, W                       373:       movfw dx
+00F4  07EE     ADDWF 0x6E, F                      374:       addwf ballx
+                                                  375:   buttons_exit
+00F5  3076     MOVLW 0x76                         376:       movlw RPaddle
+00F6  20BE     CALL 0xBE                          377:       call bound_paddle
+00F7  3075     MOVLW 0x75                         378:       movlw LPaddle
+00F8  20BE     CALL 0xBE                          379:       call bound_paddle
+00F9  0008     RETURN                             380:       return
+                                                  381:   
+                                                  382:   ;********************************
+                                                  383:   ; set_dy, détermine la valeur de dy
+                                                  384:   ; si la balle est passé au dessus du centre de la raquette
+                                                  385:   ; elle repart vers le haut (dy=-1)
+                                                  386:   ; si la balle frappe la raquette au centre elle
+                                                  387:   ; repart en ligne droite (dy=0)
+                                                  388:   ; si elle est au dessous du centre elle repart
+                                                  389:   ; vers le bas (dy=1)
+                                                  390:   ; entrée: W = pointeur raquette qui a reçue la balle
+                                                  391:   ;*********************************
+                                                  392:   set_dy  
+00FA  0084     MOVWF FSR                          393:       movwf FSR
+00FB  0800     MOVF INDF, W                       394:       movfw INDF
+00FC  3E01     ADDLW 0x1                          395:       addlw 1
+00FD  026F     SUBWF 0x6F, W                      396:       subwf bally, W
+00FE  1903     BTFSC STATUS, 0x2                  397:       skpnz
+00FF  0008     RETURN                             398:       return
+0100  1803     BTFSC STATUS, 0x0                  399:       skpnc
+0101  30FF     MOVLW 0xFF                         400:       movlw -1
+0102  1C03     BTFSS STATUS, 0x0                  401:       skpc
+0103  3001     MOVLW 0x1                          402:       movlw 1
+0104  00F1     MOVWF 0x71                         403:       movwf dy
+0105  0008     RETURN                             404:       return
+                                                  405:   
+                                                  406:   ;*******************************
+                                                  407:   ; ball_control, controle le mouvement
+                                                  408:   ; de la balle en la faisant rebondir
+                                                  409:   ; sur les raquettes et sur les bords
+                                                  410:   ; haut et bas de la table.
+                                                  411:   ;*******************************
+                                                  412:   ball_control
+0106  08F2     MOVF 0x72, F                       413:       movf ball_speed, F
+0107  1D03     BTFSS STATUS, 0x2                  414:       skpz
+0108  0008     RETURN                             415:       return
+0109  0871     MOVF 0x71, W                       416:       movfw dy
+010A  00F7     MOVWF 0x77                         417:       movwf temp
+010B  300A     MOVLW 0xA                          418:       movlw BALL_DLY
+010C  00F2     MOVWF 0x72                         419:       movwf ball_speed
+010D  0870     MOVF 0x70, W                       420:       movfw dx
+010E  07EE     ADDWF 0x6E, F                      421:       addwf ballx
+010F  0871     MOVF 0x71, W                       422:       movfw dy
+0110  07EF     ADDWF 0x6F, F                      423:       addwf bally
+                                                  424:   check_y_bounds
+0111  1903     BTFSC STATUS, 0x2                  425:       skpnz
+0112  2917     GOTO 0x117                         426:       goto invert_dy
+0113  300F     MOVLW 0xF                          427:       movlw 15
+0114  026F     SUBWF 0x6F, W                      428:       subwf bally, W
+0115  1C03     BTFSS STATUS, 0x0                  429:       skpc
+0116  2922     GOTO 0x122                         430:       goto check_x_bounds
+                                                  431:   invert_dy
+0117  09F1     COMF 0x71, F                       432:       comf dy, F
+0118  0AF1     INCF 0x71, F                       433:       incf dy, F
+0119  3000     MOVLW 0x0                          434:       tone PING_TONE
+011A  00AB     MOVWF NCO1INCH
+011B  303A     MOVLW 0x3A
+011C  00AA     MOVWF NCO1INCL
+011D  172D     BSF NCO1CON, 0x6
+011E  156C     BSF flags, 0x2
+011F  3006     MOVLW 0x6
+0120  00F3     MOVWF tone_length
+0121  1106     BCF TRISA, 0x2
+                                                  435:   check_x_bounds
+0122  08EE     MOVF 0x6E, F                       436:       movf ballx, F
+0123  1903     BTFSC STATUS, 0x2                  437:       skpnz
+0124  2929     GOTO 0x129                         438:       goto invert_dx
+0125  300F     MOVLW 0xF                          439:       movlw 15
+0126  026E     SUBWF 0x6E, W                      440:       subwf ballx,W
+0127  1D03     BTFSS STATUS, 0x2                  441:       skpz
+0128  0008     RETURN                             442:       return
+                                                  443:   invert_dx
+0129  09F0     COMF 0x70, F                       444:       comf dx
+012A  0AF0     INCF 0x70, F                       445:       incf dx
+012B  3000     MOVLW 0x0                          446:       tone PING_TONE
+012C  00AB     MOVWF NCO1INCH
+012D  303A     MOVLW 0x3A
+012E  00AA     MOVWF NCO1INCL
+012F  172D     BSF NCO1CON, 0x6
+0130  156C     BSF flags, 0x2
+0131  3006     MOVLW 0x6
+0132  00F3     MOVWF tone_length
+0133  1106     BCF TRISA, 0x2
+0134  08EE     MOVF 0x6E, F                       447:       movf ballx, F
+0135  1903     BTFSC STATUS, 0x2                  448:       skpnz
+0136  2945     GOTO 0x145                         449:       goto check_left_collision
+                                                  450:   ; a atteint le côté droit
+0137  0876     MOVF 0x76, W                       451:       movfw RPaddle
+0138  20FA     CALL 0xFA                          452:       call set_dy
+0139  0877     MOVF 0x77, W                       453:       movfw temp
+013A  0776     ADDWF 0x76, W                      454:       addwf RPaddle,W
 013B  026F     SUBWF 0x6F, W                      455:       subwf bally, W
 013C  1C03     BTFSS STATUS, 0x0                  456:       skpc
-013D  2953     GOTO 0x153                         457:       goto right_missed
+013D  2956     GOTO 0x156                         457:       goto right_missed
 013E  3003     MOVLW 0x3                          458:       movlw 3
 013F  0776     ADDWF 0x76, W                      459:       addwf RPaddle, W
-0140  026F     SUBWF 0x6F, W                      460:       subwf bally, W
-0141  1803     BTFSC STATUS, 0x0                  461:       skpnc
-0142  2953     GOTO 0x153                         462:       goto right_missed
-0143  0008     RETURN                             463:       return
-                                                  464:   check_left_collision ; a atteint le côté gauche
-0144  0875     MOVF 0x75, W                       465:       movfw LPaddle
-0145  20FD     CALL 0xFD                          466:       call set_dy
-0146  0875     MOVF 0x75, W                       467:       movfw LPaddle
-0147  026F     SUBWF 0x6F, W                      468:       subwf bally, W
-0148  1C03     BTFSS STATUS, 0x0                  469:       skpc
-0149  2950     GOTO 0x150                         470:       goto left_missed
-014A  3003     MOVLW 0x3                          471:       movlw 3
-014B  0775     ADDWF 0x75, W                      472:       addwf LPaddle, W
-014C  026F     SUBWF 0x6F, W                      473:       subwf bally, W
-014D  1803     BTFSC STATUS, 0x0                  474:       skpnc
-014E  2950     GOTO 0x150                         475:       goto left_missed
-014F  0008     RETURN                             476:       return
-                                                  477:   left_missed
-0150  16EC     BSF 0x6C, 0x5                      478:       bsf flags, F_SCORE
-0151  2166     CALL 0x166                         479:       call player_score
-0152  0008     RETURN                             480:       return
-                                                  481:   right_missed
-0153  12EC     BCF 0x6C, 0x5                      482:       bcf flags, F_SCORE
-0154  2166     CALL 0x166                         483:       call player_score
-0155  0008     RETURN                             484:       return
-                                                  485:   
-                                                  486:   ;*********************************
-                                                  487:   ; inc_score, incrémente le pointage
-                                                  488:   ; du joueur qui a gagné l'échange.
-                                                  489:   ; fait l'ajustement B.C.D. du compte.
-                                                  490:   ; entrée: W contient le pointeur du
-                                                  491:   ;         joueur qui gagné l'échange.
-                                                  492:   ;**********************************
-                                                  493:   inc_score
-0156  0084     MOVWF FSR                          494:       movwf FSR
-0157  0A80     INCF INDF, F                       495:       incf INDF
-0158  0800     MOVF INDF, W                       496:       movfw INDF
-0159  390F     ANDLW 0xF                          497:       andlw 15
-015A  3C09     SUBLW 0x9                          498:       sublw 9
-015B  1803     BTFSC STATUS, 0x0                  499:       skpnc
-015C  0008     RETURN                             500:       return
-015D  30F0     MOVLW 0xF0                         501:       movlw H'F0'
-015E  0580     ANDWF INDF, F                      502:       andwf INDF
-015F  3010     MOVLW 0x10                         503:       movlw H'10'
-0160  0780     ADDWF INDF, F                      504:       addwf INDF
-0161  30A0     MOVLW 0xA0                         505:       movlw H'A0'
-0162  0200     SUBWF INDF, W                      506:       subwf INDF,W
-0163  1903     BTFSC STATUS, 0x2                  507:       skpnz
-0164  0180     CLRF INDF                          508:       clrf INDF
-0165  0008     RETURN                             509:       return
-                                                  510:   
-                                                  511:   ;************************************
-                                                  512:   ; player_score, vérifie à qui va le point
-                                                  513:   ; et appelle inc_score avec le pointeur
-                                                  514:   ; du joueur gagnant.
-                                                  515:   ; appel set_pause pour arrêter l'action
-                                                  516:   ; en attente du prochain service.
-                                                  517:   ;*************************************
-                                                  518:   player_score 
-0166  126C     BCF 0x6C, 0x4                      519:       bcf flags, F_SERVE
-0167  1EEC     BTFSS 0x6C, 0x5                    520:       btfss flags, F_SCORE ; 0 gauche, 1 droite
-0168  296C     GOTO 0x16C                         521:       goto left_score
-0169  166C     BSF 0x6C, 0x4                      522:       bsf flags, F_SERVE
-016A  306B     MOVLW 0x6B                         523:       movlw RScore
-016B  296D     GOTO 0x16D                         524:       goto $+2
-                                                  525:   left_score
-016C  306A     MOVLW 0x6A                         526:       movlw LScore
-016D  2156     CALL 0x156                         527:       call inc_score
-016E  3000     MOVLW 0x0                          528:       tone SCORE_TONE
-016F  00AB     MOVWF NCO1INCH
-0170  301E     MOVLW 0x1E
-0171  00AA     MOVWF NCO1INCL
-0172  172D     BSF NCO1CON, 0x6
-0173  156C     BSF flags, 0x2
-0174  3032     MOVLW 0x32
-0175  00F3     MOVWF tone_length
-0176  1106     BCF TRISA, 0x2
-0177  20AE     CALL 0xAE                          529:       call set_pause
-0178  0008     RETURN                             530:       return
-                                                  531:   
-                                                  532:   ;**************************
-                                                  533:   ; draw_lpaddle, dessine la
-                                                  534:   ; raquette de gauche
+0140  0777     ADDWF 0x77, W                      460:       addwf temp, W
+0141  026F     SUBWF 0x6F, W                      461:       subwf bally, W
+0142  1803     BTFSC STATUS, 0x0                  462:       skpnc
+0143  2956     GOTO 0x156                         463:       goto right_missed
+0144  0008     RETURN                             464:       return
+                                                  465:   check_left_collision ; a atteint le côté gauche
+0145  0875     MOVF 0x75, W                       466:       movfw LPaddle
+0146  20FA     CALL 0xFA                          467:       call set_dy
+0147  0877     MOVF 0x77, W                       468:       movfw temp
+0148  0775     ADDWF 0x75, W                      469:       addwf LPaddle,W
+0149  026F     SUBWF 0x6F, W                      470:       subwf bally, W
+014A  1C03     BTFSS STATUS, 0x0                  471:       skpc
+014B  2953     GOTO 0x153                         472:       goto left_missed
+014C  3003     MOVLW 0x3                          473:       movlw 3
+014D  0775     ADDWF 0x75, W                      474:       addwf LPaddle, W
+014E  0777     ADDWF 0x77, W                      475:       addwf temp, W
+014F  026F     SUBWF 0x6F, W                      476:       subwf bally, W
+0150  1803     BTFSC STATUS, 0x0                  477:       skpnc
+0151  2953     GOTO 0x153                         478:       goto left_missed
+0152  0008     RETURN                             479:       return
+                                                  480:   left_missed
+0153  16EC     BSF 0x6C, 0x5                      481:       bsf flags, F_SCORE
+0154  2169     CALL 0x169                         482:       call player_score
+0155  0008     RETURN                             483:       return
+                                                  484:   right_missed
+0156  12EC     BCF 0x6C, 0x5                      485:       bcf flags, F_SCORE
+0157  2169     CALL 0x169                         486:       call player_score
+0158  0008     RETURN                             487:       return
+                                                  488:   
+                                                  489:   ;*********************************
+                                                  490:   ; inc_score, incrémente le pointage
+                                                  491:   ; du joueur qui a gagné l'échange.
+                                                  492:   ; fait l'ajustement B.C.D. du compte.
+                                                  493:   ; entrée: W contient le pointeur du
+                                                  494:   ;         joueur qui gagné l'échange.
+                                                  495:   ;**********************************
+                                                  496:   inc_score
+0159  0084     MOVWF FSR                          497:       movwf FSR
+015A  0A80     INCF INDF, F                       498:       incf INDF
+015B  0800     MOVF INDF, W                       499:       movfw INDF
+015C  390F     ANDLW 0xF                          500:       andlw 15
+015D  3C09     SUBLW 0x9                          501:       sublw 9
+015E  1803     BTFSC STATUS, 0x0                  502:       skpnc
+015F  0008     RETURN                             503:       return
+0160  30F0     MOVLW 0xF0                         504:       movlw H'F0'
+0161  0580     ANDWF INDF, F                      505:       andwf INDF
+0162  3010     MOVLW 0x10                         506:       movlw H'10'
+0163  0780     ADDWF INDF, F                      507:       addwf INDF
+0164  30A0     MOVLW 0xA0                         508:       movlw H'A0'
+0165  0200     SUBWF INDF, W                      509:       subwf INDF,W
+0166  1903     BTFSC STATUS, 0x2                  510:       skpnz
+0167  0180     CLRF INDF                          511:       clrf INDF
+0168  0008     RETURN                             512:       return
+                                                  513:   
+                                                  514:   ;************************************
+                                                  515:   ; player_score, vérifie à qui va le point
+                                                  516:   ; et appelle inc_score avec le pointeur
+                                                  517:   ; du joueur gagnant.
+                                                  518:   ; appel set_pause pour arrêter l'action
+                                                  519:   ; en attente du prochain service.
+                                                  520:   ;*************************************
+                                                  521:   player_score 
+0169  126C     BCF 0x6C, 0x4                      522:       bcf flags, F_SERVE
+016A  1EEC     BTFSS 0x6C, 0x5                    523:       btfss flags, F_SCORE ; 0 gauche, 1 droite
+016B  296F     GOTO 0x16F                         524:       goto left_score
+016C  166C     BSF 0x6C, 0x4                      525:       bsf flags, F_SERVE
+016D  306B     MOVLW 0x6B                         526:       movlw RScore
+016E  2970     GOTO 0x170                         527:       goto $+2
+                                                  528:   left_score
+016F  306A     MOVLW 0x6A                         529:       movlw LScore
+0170  2159     CALL 0x159                         530:       call inc_score
+0171  3000     MOVLW 0x0                          531:       tone SCORE_TONE
+0172  00AB     MOVWF NCO1INCH
+0173  301E     MOVLW 0x1E
+0174  00AA     MOVWF NCO1INCL
+0175  172D     BSF NCO1CON, 0x6
+0176  156C     BSF flags, 0x2
+0177  3032     MOVLW 0x32
+0178  00F3     MOVWF tone_length
+0179  1106     BCF TRISA, 0x2
+017A  20AE     CALL 0xAE                          532:       call set_pause
+017B  0008     RETURN                             533:       return
+                                                  534:   
                                                   535:   ;**************************
-                                                  536:   draw_lpaddle     ; dessine raquette de gauche
-0179  304A     MOVLW 0x4A                         537:       movlw disp+10
-017A  0084     MOVWF FSR                          538:       movwf FSR
-017B  1003     BCF STATUS, 0x0                    539:       clrc
-017C  0D75     RLF 0x75, W                        540:       rlf LPaddle, W
-017D  0784     ADDWF FSR, F                       541:       addwf FSR
-017E  3080     MOVLW 0x80                         542:       movlw 128
-017F  2986     GOTO 0x186                         543:       goto draw_paddle
-                                                  544:   
-                                                  545:   ;****************************
-                                                  546:   ; draw_rpaddle, dessine la
-                                                  547:   ; raquette de droite.
+                                                  536:   ; draw_lpaddle, dessine la
+                                                  537:   ; raquette de gauche
+                                                  538:   ;**************************
+                                                  539:   draw_lpaddle     ; dessine raquette de gauche
+017C  304A     MOVLW 0x4A                         540:       movlw disp+10
+017D  0084     MOVWF FSR                          541:       movwf FSR
+017E  1003     BCF STATUS, 0x0                    542:       clrc
+017F  0D75     RLF 0x75, W                        543:       rlf LPaddle, W
+0180  0784     ADDWF FSR, F                       544:       addwf FSR
+0181  3080     MOVLW 0x80                         545:       movlw 128
+0182  2989     GOTO 0x189                         546:       goto draw_paddle
+                                                  547:   
                                                   548:   ;****************************
-                                                  549:   draw_rpaddle     ; dessine raquette de droite
-0180  304B     MOVLW 0x4B                         550:       movlw disp+11
-0181  0084     MOVWF FSR                          551:       movwf FSR
-0182  1003     BCF STATUS, 0x0                    552:       clrc
-0183  0D76     RLF 0x76, W                        553:       rlf RPaddle, W
-0184  0784     ADDWF FSR, F                       554:       addwf FSR
-0185  3001     MOVLW 0x1                          555:       movlw 1
-                                                  556:   draw_paddle
-0186  0480     IORWF INDF, F                      557:       iorwf INDF
-0187  0A84     INCF FSR, F                        558:       incf FSR
-0188  0A84     INCF FSR, F                        559:       incf FSR
+                                                  549:   ; draw_rpaddle, dessine la
+                                                  550:   ; raquette de droite.
+                                                  551:   ;****************************
+                                                  552:   draw_rpaddle     ; dessine raquette de droite
+0183  304B     MOVLW 0x4B                         553:       movlw disp+11
+0184  0084     MOVWF FSR                          554:       movwf FSR
+0185  1003     BCF STATUS, 0x0                    555:       clrc
+0186  0D76     RLF 0x76, W                        556:       rlf RPaddle, W
+0187  0784     ADDWF FSR, F                       557:       addwf FSR
+0188  3001     MOVLW 0x1                          558:       movlw 1
+                                                  559:   draw_paddle
 0189  0480     IORWF INDF, F                      560:       iorwf INDF
 018A  0A84     INCF FSR, F                        561:       incf FSR
 018B  0A84     INCF FSR, F                        562:       incf FSR
 018C  0480     IORWF INDF, F                      563:       iorwf INDF
-018D  0008     RETURN                             564:       return
-                                                  565:   
-                                                  566:   ;****************************
-                                                  567:   ; draw_ball, dessine la balle
-                                                  568:   ; sur la table
+018D  0A84     INCF FSR, F                        564:       incf FSR
+018E  0A84     INCF FSR, F                        565:       incf FSR
+018F  0480     IORWF INDF, F                      566:       iorwf INDF
+0190  0008     RETURN                             567:       return
+                                                  568:   
                                                   569:   ;****************************
-                                                  570:   draw_ball       ; 24 cycles avec appel et retour
-018E  304A     MOVLW 0x4A                         571:       movlw disp+10 ; les 10 premiers octets utilisé pour l'affichage du pointage
-018F  0084     MOVWF FSR                          572:       movwf FSR
-0190  1003     BCF STATUS, 0x0                    573:       clrc
-0191  0D6F     RLF 0x6F, W                        574:       rlf bally, W  ; 2 octets par ligne, donc déplacement = y*2
-0192  0784     ADDWF FSR, F                       575:       addwf FSR
-0193  19EE     BTFSC 0x6E, 0x3                    576:       btfsc ballx, 3 ; si >7
-0194  0A84     INCF FSR, F                        577:       incf FSR       ; octet suivant
-0195  3080     MOVLW 0x80                         578:       movlw 128      ; position de la balle dans l'octet
-0196  00F7     MOVWF 0x77                         579:       movwf temp     ; rotation jusqu'à la bonne position
-0197  086E     MOVF 0x6E, W                       580:       movfw ballx
-0198  3907     ANDLW 0x7                          581:       andlw 7        ; W= compte des rotations
-0199  1903     BTFSC STATUS, 0x2                  582:       skpnz
-019A  29A0     GOTO 0x1A0                         583:       goto $+6
-019B  1003     BCF STATUS, 0x0                    584:       clrc
-019C  0CF7     RRF 0x77, F                        585:       rrf temp
-019D  3EFF     ADDLW 0xFF                         586:       addlw H'FF'   ; W--
-019E  1D03     BTFSS STATUS, 0x2                  587:       skpz
-019F  299B     GOTO 0x19B                         588:       goto $-4
-01A0  0877     MOVF 0x77, W                       589:       movfw temp
-01A1  0480     IORWF INDF, F                      590:       iorwf INDF, F
-01A2  0008     RETURN                             591:       return
-                                                  592:   
-                                                  593:   ;********************
-                                                  594:   ;clear_disp
-                                                  595:   ;efface l'affichage
+                                                  570:   ; draw_ball, dessine la balle
+                                                  571:   ; sur la table
+                                                  572:   ;****************************
+                                                  573:   draw_ball       ; 24 cycles avec appel et retour
+0191  304A     MOVLW 0x4A                         574:       movlw disp+10 ; les 10 premiers octets utilisé pour l'affichage du pointage
+0192  0084     MOVWF FSR                          575:       movwf FSR
+0193  1003     BCF STATUS, 0x0                    576:       clrc
+0194  0D6F     RLF 0x6F, W                        577:       rlf bally, W  ; 2 octets par ligne, donc déplacement = y*2
+0195  0784     ADDWF FSR, F                       578:       addwf FSR
+0196  19EE     BTFSC 0x6E, 0x3                    579:       btfsc ballx, 3 ; si >7
+0197  0A84     INCF FSR, F                        580:       incf FSR       ; octet suivant
+0198  3080     MOVLW 0x80                         581:       movlw 128      ; position de la balle dans l'octet
+0199  00F7     MOVWF 0x77                         582:       movwf temp     ; rotation jusqu'à la bonne position
+019A  086E     MOVF 0x6E, W                       583:       movfw ballx
+019B  3907     ANDLW 0x7                          584:       andlw 7        ; W= compte des rotations
+019C  1903     BTFSC STATUS, 0x2                  585:       skpnz
+019D  29A3     GOTO 0x1A3                         586:       goto $+6
+019E  1003     BCF STATUS, 0x0                    587:       clrc
+019F  0CF7     RRF 0x77, F                        588:       rrf temp
+01A0  3EFF     ADDLW 0xFF                         589:       addlw H'FF'   ; W--
+01A1  1D03     BTFSS STATUS, 0x2                  590:       skpz
+01A2  299E     GOTO 0x19E                         591:       goto $-4
+01A3  0877     MOVF 0x77, W                       592:       movfw temp
+01A4  0480     IORWF INDF, F                      593:       iorwf INDF, F
+01A5  0008     RETURN                             594:       return
+                                                  595:   
                                                   596:   ;********************
-                                                  597:   clear_disp    ; 168 cycles avec appel et retour
-01A3  3040     MOVLW 0x40                         598:       movlw disp
-01A4  0084     MOVWF FSR                          599:       movwf FSR
-01A5  302A     MOVLW 0x2A                         600:       movlw 42
-01A6  00F7     MOVWF 0x77                         601:       movwf temp
-01A7  0180     CLRF INDF                          602:       clrf INDF
-01A8  0A84     INCF FSR, F                        603:       incf FSR
-01A9  0BF7     DECFSZ 0x77, F                     604:       decfsz temp
-01AA  29A7     GOTO 0x1A7                         605:       goto $-3
-01AB  0008     RETURN                             606:       return
-                                                  607:   
-                                                  608:   ;***********************
-                                                  609:   ; draw_table, dessine
-                                                  610:   ; la table en appellant
-                                                  611:   ; les routines pour chaque
-                                                  612:   ; élément la composant.
-                                                  613:   ;************************
-                                                  614:   draw_table              ; 230 avec appel et retour
-01AC  21A3     CALL 0x1A3                         615:       call clear_disp     ; 168
-01AD  2179     CALL 0x179                         616:       call draw_lpaddle      ; 17
-01AE  2180     CALL 0x180                         617:       call draw_rpaddle      ; 17
-01AF  218E     CALL 0x18E                         618:       call draw_ball      ; 24
-01B0  0008     RETURN                             619:       return              ; 2
-                                                  620:   
-                                                  621:   ;***********************************
-                                                  622:   ; digit_offset, calcule la position
-                                                  623:   ;   position = digit * 10 / 2
-                                                  624:   ; dans la table 'digits' pour chaque digit
-                                                  625:   ; entrée: W contient le digit dans
-                                                  626:   ;         les 4 bits faibles
-                                                  627:   ; sortie: W contient le déplacement dans
-                                                  628:   ;         la table 'digits'
-                                                  629:   ; utilise temp2
-                                                  630:   ;***********************************
-                                                  631:   digit_offset    
-01B1  390E     ANDLW 0xE                          632:       andlw H'E'  
-01B2  00F8     MOVWF 0x78                         633:       movwf temp2 
-01B3  1003     BCF STATUS, 0x0                    634:       clrc
-01B4  0DF8     RLF 0x78, F                        635:       rlf temp2, F
-01B5  0DF8     RLF 0x78, F                        636:       rlf temp2, F
-01B6  07F8     ADDWF 0x78, F                      637:       addwf temp2, F
-01B7  0C78     RRF 0x78, W                        638:       rrf temp2, W
-01B8  0008     RETURN                             639:       return
-                                                  640:   
-                                                  641:   ;********************************************
-                                                  642:   ; digit_row, affiche une ligne des 2 digits
-                                                  643:   ;            du pointage.
-                                                  644:   ; entrée: temp3, contient le pointage
-                                                  645:   ;         temp, contient la rangée du glyphe (0-5)
-                                                  646:   ; utilise temp2
-                                                  647:   ;********************************************
-                                                  648:   digit_row
-01B9  0E79     SWAPF 0x79, W                      649:       swapf temp3, W   ; digit dizaine
-01BA  21B1     CALL 0x1B1                         650:       call digit_offset
-01BB  0777     ADDWF 0x77, W                      651:       addwf temp, W    ; ajoute déplacement pour la rangée
-01BC  2062     CALL 0x62                          652:       call digits
-01BD  00F8     MOVWF 0x78                         653:       movwf temp2     ; bitmap pour cette rangée
-01BE  1A79     BTFSC 0x79, 0x4                    654:       btfsc temp3, 4  ; si digit pair prend les 4 bits forts
-01BF  0E78     SWAPF 0x78, W                      655:       swapf temp2, W  ; si impair prend les 4 bits faibles.
-01C0  39F0     ANDLW 0xF0                         656:       andlw H'F0'
-01C1  0480     IORWF INDF, F                      657:       iorwf INDF
-                                                  658:   digit2  ; digit unités
-01C2  0879     MOVF 0x79, W                       659:       movfw temp3
-01C3  21B1     CALL 0x1B1                         660:       call digit_offset
-01C4  0777     ADDWF 0x77, W                      661:       addwf temp, W
-01C5  2062     CALL 0x62                          662:       call digits
-01C6  00F8     MOVWF 0x78                         663:       movwf temp2
-01C7  1C79     BTFSS 0x79, 0x0                    664:       btfss temp3, 0
-01C8  0E78     SWAPF 0x78, W                      665:       swapf temp2, W
-01C9  390F     ANDLW 0xF                          666:       andlw H'F'
-01CA  0480     IORWF INDF, F                      667:       iorwf INDF
-01CB  0008     RETURN                             668:       return
-                                                  669:   
-                                                  670:   ;***********************************
-                                                  671:   ; draw_score, affiche les glyphes du pointage
-                                                  672:   ; de chaque joueur. L'affichage se fait par
-                                                  673:   ; rangée, i.e. la première rangée des 4 glyphes
-                                                  674:   ; est affichée ensuite la 2ième, etc.
-                                                  675:   ; utilse: temp comme compteur de rangée
-                                                  676:   ;         temp3 contient le pointage
-                                                  677:   ;         FSR pointe la mémoire vidéo 'disp'
-                                                  678:   ;************************************
-                                                  679:   draw_score
-01CC  3040     MOVLW 0x40                         680:       movlw disp
-01CD  0084     MOVWF FSR                          681:       movwf FSR
-01CE  01F7     CLRF 0x77                          682:       clrf temp  ; compteur lignes du glyphe
-                                                  683:   next_row
-01CF  086A     MOVF 0x6A, W                       684:       movfw LScore
-01D0  00F9     MOVWF 0x79                         685:       movwf temp3
-01D1  21B9     CALL 0x1B9                         686:       call digit_row
-01D2  0A84     INCF FSR, F                        687:       incf FSR
-01D3  086B     MOVF 0x6B, W                       688:       movfw RScore
-01D4  00F9     MOVWF 0x79                         689:       movwf temp3
-01D5  21B9     CALL 0x1B9                         690:       call digit_row
-01D6  0A84     INCF FSR, F                        691:       incf FSR
-01D7  0AF7     INCF 0x77, F                       692:       incf temp
-01D8  3005     MOVLW 0x5                          693:       movlw 5
-01D9  0277     SUBWF 0x77, W                      694:       subwf temp,W
-01DA  1D03     BTFSS STATUS, 0x2                  695:       skpz
-01DB  29CF     GOTO 0x1CF                         696:       goto next_row
-01DC  0008     RETURN                             697:       return
-                                                  698:   
-                                                  699:   ; initialiation du programme.
-                                                  700:   init
-01DD  300F     MOVLW 0xF                          701:       set_clk_freq D'16'
-01DE  0590     ANDWF OSCCON, F
-01DF  3070     MOVLW 0x70
-01E0  0490     IORWF OSCCON, F
-01E1  0188     CLRF ANSELA                        702:       clrf ANSELA
-                                                  703:   ; zero RAM
-01E2  3040     MOVLW 0x40                         704:       movlw MINRAM
-01E3  0084     MOVWF FSR                          705:       movwf FSR
-01E4  0180     CLRF INDF                          706:       clrf INDF
-01E5  0A84     INCF FSR, F                        707:       incf FSR
-01E6  1F84     BTFSS FSR, 0x7                     708:       btfss FSR, 7
-01E7  29E4     GOTO 0x1E4                         709:       goto $-3
-                                                  710:   ; initialisation NCO
-01E8  30FC     MOVLW 0xFC                         711:       set_nco_clock NCO_CLK_INTOSC
-01E9  05AE     ANDWF NCO1CLK, F
-01EA  3002     MOVLW 0x2
-01EB  04AE     IORWF NCO1CLK, F
-01EC  17AD     BSF NCO1CON, 0x7                   712:       enable_nco
-                                                  713:   ; initialisation PWM1
-01ED  30FE     MOVLW 0xFE                         714:       movlw PWM_PERIOD
-01EE  0092     MOVWF PR2                          715:       movwf PR2
-01EF  1086     BCF TRISA, 0x1                     716:       bcf TRISA, SYNC_OUT
-01F0  1619     BSF PWM2CON, 0x4                   717:       set_pwm_polarity  PWM_CH2, PWM_POL_L
-01F1  1719     BSF PWM2CON, 0x6                   718:       enable_pwm_output PWM_CH2
-01F2  1799     BSF PWM2CON, 0x7                   719:       enable_pwm_channel PWM_CH2
-01F3  148D     BSF PIE1, 0x1                      720:       enable_tmr2_int
-01F4  170B     BSF INTCON, 0x6                    721:       enable_periph_int
-01F5  20AE     CALL 0xAE                          722:       call set_pause
-01F6  1513     BSF T2CON, 0x2                     723:       bsf T2CON, TMR2ON
-01F7  178B     BSF INTCON, 0x7                    724:       enable_interrupt
-                                                  725:   
-                                                  726:   ; il ne se passe rien dans la procédure
-                                                  727:   ; principale car tout est fait pendant
-                                                  728:   ; l'interruption du TIMER2
-                                                  729:   main
-01F8  29F8     GOTO 0x1F8                         730:       goto main 
-2007  0000     NOP                                731:       end
-                                                  732:   
-                                                  733:   
-                                                  734:   
+                                                  597:   ;clear_disp
+                                                  598:   ;efface l'affichage
+                                                  599:   ;********************
+                                                  600:   clear_disp    ; 168 cycles avec appel et retour
+01A6  3040     MOVLW 0x40                         601:       movlw disp
+01A7  0084     MOVWF FSR                          602:       movwf FSR
+01A8  302A     MOVLW 0x2A                         603:       movlw 42
+01A9  00F7     MOVWF 0x77                         604:       movwf temp
+01AA  0180     CLRF INDF                          605:       clrf INDF
+01AB  0A84     INCF FSR, F                        606:       incf FSR
+01AC  0BF7     DECFSZ 0x77, F                     607:       decfsz temp
+01AD  29AA     GOTO 0x1AA                         608:       goto $-3
+01AE  0008     RETURN                             609:       return
+                                                  610:   
+                                                  611:   ;***********************
+                                                  612:   ; draw_table, dessine
+                                                  613:   ; la table en appellant
+                                                  614:   ; les routines pour chaque
+                                                  615:   ; élément la composant.
+                                                  616:   ;************************
+                                                  617:   draw_table              ; 230 avec appel et retour
+01AF  21A6     CALL 0x1A6                         618:       call clear_disp     ; 168
+01B0  217C     CALL 0x17C                         619:       call draw_lpaddle      ; 17
+01B1  2183     CALL 0x183                         620:       call draw_rpaddle      ; 17
+01B2  2191     CALL 0x191                         621:       call draw_ball      ; 24
+01B3  0008     RETURN                             622:       return              ; 2
+                                                  623:   
+                                                  624:   ;***********************************
+                                                  625:   ; digit_offset, calcule la position
+                                                  626:   ;   position = digit * 10 / 2
+                                                  627:   ; dans la table 'digits' pour chaque digit
+                                                  628:   ; entrée: W contient le digit dans
+                                                  629:   ;         les 4 bits faibles
+                                                  630:   ; sortie: W contient le déplacement dans
+                                                  631:   ;         la table 'digits'
+                                                  632:   ; utilise temp2
+                                                  633:   ;***********************************
+                                                  634:   digit_offset    
+01B4  390E     ANDLW 0xE                          635:       andlw H'E'  
+01B5  00F8     MOVWF 0x78                         636:       movwf temp2 
+01B6  1003     BCF STATUS, 0x0                    637:       clrc
+01B7  0DF8     RLF 0x78, F                        638:       rlf temp2, F
+01B8  0DF8     RLF 0x78, F                        639:       rlf temp2, F
+01B9  07F8     ADDWF 0x78, F                      640:       addwf temp2, F
+01BA  0C78     RRF 0x78, W                        641:       rrf temp2, W
+01BB  0008     RETURN                             642:       return
+                                                  643:   
+                                                  644:   ;********************************************
+                                                  645:   ; digit_row, affiche une ligne des 2 digits
+                                                  646:   ;            du pointage.
+                                                  647:   ; entrée: temp3, contient le pointage
+                                                  648:   ;         temp, contient la rangée du glyphe (0-5)
+                                                  649:   ; utilise temp2
+                                                  650:   ;********************************************
+                                                  651:   digit_row
+01BC  0E79     SWAPF 0x79, W                      652:       swapf temp3, W   ; digit dizaine
+01BD  21B4     CALL 0x1B4                         653:       call digit_offset
+01BE  0777     ADDWF 0x77, W                      654:       addwf temp, W    ; ajoute déplacement pour la rangée
+01BF  2062     CALL 0x62                          655:       call digits
+01C0  00F8     MOVWF 0x78                         656:       movwf temp2     ; bitmap pour cette rangée
+01C1  1A79     BTFSC 0x79, 0x4                    657:       btfsc temp3, 4  ; si digit pair prend les 4 bits forts
+01C2  0E78     SWAPF 0x78, W                      658:       swapf temp2, W  ; si impair prend les 4 bits faibles.
+01C3  39F0     ANDLW 0xF0                         659:       andlw H'F0'
+01C4  0480     IORWF INDF, F                      660:       iorwf INDF
+                                                  661:   digit2  ; digit unités
+01C5  0879     MOVF 0x79, W                       662:       movfw temp3
+01C6  21B4     CALL 0x1B4                         663:       call digit_offset
+01C7  0777     ADDWF 0x77, W                      664:       addwf temp, W
+01C8  2062     CALL 0x62                          665:       call digits
+01C9  00F8     MOVWF 0x78                         666:       movwf temp2
+01CA  1C79     BTFSS 0x79, 0x0                    667:       btfss temp3, 0
+01CB  0E78     SWAPF 0x78, W                      668:       swapf temp2, W
+01CC  390F     ANDLW 0xF                          669:       andlw H'F'
+01CD  0480     IORWF INDF, F                      670:       iorwf INDF
+01CE  0008     RETURN                             671:       return
+                                                  672:   
+                                                  673:   ;***********************************
+                                                  674:   ; draw_score, affiche les glyphes du pointage
+                                                  675:   ; de chaque joueur. L'affichage se fait par
+                                                  676:   ; rangée, i.e. la première rangée des 4 glyphes
+                                                  677:   ; est affichée ensuite la 2ième, etc.
+                                                  678:   ; utilse: temp comme compteur de rangée
+                                                  679:   ;         temp3 contient le pointage
+                                                  680:   ;         FSR pointe la mémoire vidéo 'disp'
+                                                  681:   ;************************************
+                                                  682:   draw_score
+01CF  3040     MOVLW 0x40                         683:       movlw disp
+01D0  0084     MOVWF FSR                          684:       movwf FSR
+01D1  01F7     CLRF 0x77                          685:       clrf temp  ; compteur lignes du glyphe
+                                                  686:   next_row
+01D2  086A     MOVF 0x6A, W                       687:       movfw LScore
+01D3  00F9     MOVWF 0x79                         688:       movwf temp3
+01D4  21BC     CALL 0x1BC                         689:       call digit_row
+01D5  0A84     INCF FSR, F                        690:       incf FSR
+01D6  086B     MOVF 0x6B, W                       691:       movfw RScore
+01D7  00F9     MOVWF 0x79                         692:       movwf temp3
+01D8  21BC     CALL 0x1BC                         693:       call digit_row
+01D9  0A84     INCF FSR, F                        694:       incf FSR
+01DA  0AF7     INCF 0x77, F                       695:       incf temp
+01DB  3005     MOVLW 0x5                          696:       movlw 5
+01DC  0277     SUBWF 0x77, W                      697:       subwf temp,W
+01DD  1D03     BTFSS STATUS, 0x2                  698:       skpz
+01DE  29D2     GOTO 0x1D2                         699:       goto next_row
+01DF  0008     RETURN                             700:       return
+                                                  701:   
+                                                  702:   ; initialiation du programme.
+                                                  703:   init
+01E0  300F     MOVLW 0xF                          704:       set_clk_freq D'16'
+01E1  0590     ANDWF OSCCON, F
+01E2  3070     MOVLW 0x70
+01E3  0490     IORWF OSCCON, F
+01E4  0188     CLRF ANSELA                        705:       clrf ANSELA
+                                                  706:   ; zero RAM
+01E5  3040     MOVLW 0x40                         707:       movlw MINRAM
+01E6  0084     MOVWF FSR                          708:       movwf FSR
+01E7  0180     CLRF INDF                          709:       clrf INDF
+01E8  0A84     INCF FSR, F                        710:       incf FSR
+01E9  1F84     BTFSS FSR, 0x7                     711:       btfss FSR, 7
+01EA  29E7     GOTO 0x1E7                         712:       goto $-3
+                                                  713:   ; initialisation NCO
+01EB  30FC     MOVLW 0xFC                         714:       set_nco_clock NCO_CLK_INTOSC
+01EC  05AE     ANDWF NCO1CLK, F
+01ED  3002     MOVLW 0x2
+01EE  04AE     IORWF NCO1CLK, F
+01EF  17AD     BSF NCO1CON, 0x7                   715:       enable_nco
+                                                  716:   ; initialisation PWM1
+01F0  30FE     MOVLW 0xFE                         717:       movlw PWM_PERIOD
+01F1  0092     MOVWF PR2                          718:       movwf PR2
+01F2  1086     BCF TRISA, 0x1                     719:       bcf TRISA, SYNC_OUT
+01F3  1619     BSF PWM2CON, 0x4                   720:       set_pwm_polarity  PWM_CH2, PWM_POL_L
+01F4  1719     BSF PWM2CON, 0x6                   721:       enable_pwm_output PWM_CH2
+01F5  1799     BSF PWM2CON, 0x7                   722:       enable_pwm_channel PWM_CH2
+01F6  148D     BSF PIE1, 0x1                      723:       enable_tmr2_int
+01F7  170B     BSF INTCON, 0x6                    724:       enable_periph_int
+01F8  20AE     CALL 0xAE                          725:       call set_pause
+01F9  1513     BSF T2CON, 0x2                     726:       bsf T2CON, TMR2ON
+01FA  178B     BSF INTCON, 0x7                    727:       enable_interrupt
+                                                  728:   
+                                                  729:   ; il ne se passe rien dans la procédure
+                                                  730:   ; principale car tout est fait pendant
+                                                  731:   ; l'interruption du TIMER2
+                                                  732:   main
+01FB  29FB     GOTO 0x1FB                         733:       goto main 
+2007  0000     NOP                                734:       end
                                                   735:   
+                                                  736:   
+                                                  737:   
+                                                  738:   

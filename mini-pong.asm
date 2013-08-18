@@ -41,8 +41,8 @@
 #define F_PAUSE 3 ; action arrêtée
 #define F_SERVE 4 ; qui a le service, 0 gauche, 1 droite
 #define F_SCORE 5 ; 0 point à gauche, 1 point à droite
-#define F_RMOVED 6 ; joueur de droit a bougé sa raquette
-#define F_LMOVED 7 ; joueur de gauche a bougé sa raquette
+#define F_MOVED 6 ; le joueur qui a le service a bougé sa raquette
+;#define F_LMOVED 7 ; joueur de gauche a bougé sa raquette
 
 
 #define VIDEO_OUT RA0  ; sortie signal vidéo
@@ -51,12 +51,12 @@
 #define DOWN_BTN RA2   ; bouton déplacement vers le bas
 #define UP_BTN RA3     ; vers le haut
 
-#define BALL_DLY  7     ; détermine la vitesse de la balle
+#define BALL_DLY  10     ; détermine la vitesse de la balle
 #define SCORE_TONE 30   ; tonalité lorsqu'un point est compté
 #define SCORE_LENGTH 50 ; durée de la tonalité
 #define PING_TONE 58    ; tonalité lorsque la balle frappe la raquette ou rebondie.
 #define PING_LENGTH 6   ; durée
-#define BTN_DLY 12       ; détermine la vitesse des raquettes
+#define BTN_DLY 14       ; détermine la vitesse des raquettes
 
 ; macros
 
@@ -327,8 +327,7 @@ bound_paddle
 ; gauche ou droite.
 ;*********************************
 buttons  
-    bcf flags, F_RMOVED
-    bcf flags, F_LMOVED
+    bcf flags, F_MOVED
     bcf PORTA, RA0
     bcf TRISA, RA0 ; mode sortie
     delay_us 4
@@ -343,43 +342,41 @@ buttons
     ; remet le port à l'état initial
     bsf TRISA, RA0
     bcf PORTA, RA0
-    ; vérification état boutons de droite.
+; lecture boutons droites
     btfsc temp, RA3
-    goto $+3
+    goto $+4
     decf RPaddle
-    bsf flags, F_RMOVED
+    btfsc flags, F_SERVE
+    bsf flags, F_MOVED
     btfsc temp, RA2
-    goto $+3
+    goto $+4
     incf RPaddle
-    bsf flags, F_RMOVED
-    ; vérification état boutons de gauche
+    btfsc flags, F_SERVE
+    bsf flags, F_MOVED
+; lecture boutons gauches
     btfsc temp2, RA3
-    goto $+3
+    goto $+4
     decf LPaddle
-    bsf flags, F_LMOVED
+    btfss flags, F_SERVE
+    bsf flags, F_MOVED
     btfsc temp2, RA2
-    goto $+3
+    goto $+4
     incf LPaddle
-    bsf flags, F_LMOVED
+    btfss flags, F_SERVE
+    bsf flags, F_MOVED
+; libère si pause
+    btfss flags, F_MOVED
+    goto buttons_exit
+    btfss flags, F_PAUSE
+    goto buttons_exit
+    bcf flags, F_PAUSE
+    movfw dx
+    addwf ballx
 buttons_exit
     movlw RPaddle
     call bound_paddle
     movlw LPaddle
     call bound_paddle
-    btfss flags, F_PAUSE
-    return
-    movlw (1<<F_RMOVED)|(1<<F_LMOVED)
-    andwf flags, W
-    skpnz
-    return
-    btfss flags, F_SERVE
-    goto test_left_moved
-    btfsc flags, F_RMOVED
-    bcf flags, F_PAUSE
-    return
-test_left_moved
-    btfsc flags, F_LMOVED
-    bcf flags, F_PAUSE
     return
 
 ;********************************
@@ -416,6 +413,8 @@ ball_control
     movf ball_speed, F
     skpz
     return
+    movfw dy
+    movwf temp
     movlw BALL_DLY
     movwf ball_speed
     movfw dx
@@ -439,7 +438,7 @@ check_x_bounds
     goto invert_dx
     movlw 15
     subwf ballx,W
-    skpc
+    skpz
     return
 invert_dx
     comf dx
@@ -451,12 +450,14 @@ invert_dx
 ; a atteint le côté droit
     movfw RPaddle
     call set_dy
-    movfw RPaddle
+    movfw temp
+    addwf RPaddle,W
     subwf bally, W
     skpc
     goto right_missed
     movlw 3
     addwf RPaddle, W
+    addwf temp, W
     subwf bally, W
     skpnc
     goto right_missed
@@ -464,12 +465,14 @@ invert_dx
 check_left_collision ; a atteint le côté gauche
     movfw LPaddle
     call set_dy
-    movfw LPaddle
+    movfw temp
+    addwf LPaddle,W
     subwf bally, W
     skpc
     goto left_missed
     movlw 3
     addwf LPaddle, W
+    addwf temp, W
     subwf bally, W
     skpnc
     goto left_missed
